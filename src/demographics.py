@@ -1,0 +1,36 @@
+from typing import Union
+import statistics
+from typing import Optional
+from pydantic import BaseModel
+
+
+class Demographics(BaseModel):
+    subject_id: int
+    age: Optional[int]
+    gender: Optional[str]
+
+
+class DemographicsComparator:
+    def __init__(self):
+        pass
+
+    def compare(
+        self,
+        demographics_a: Union[list[Demographics], Demographics],
+        demographics_b: Union[list[Demographics], Demographics],
+    ) -> float:
+        age_similarity = self._compare_age(demographics_a, demographics_b)
+        gender_similarity = self._compare_gender(demographics_a, demographics_b)
+        return statistics.mean([age_similarity, gender_similarity])
+
+    def _compare_age(
+        self, demographics_a: Demographics, demographics_b: Demographics
+    ) -> float:
+        return 1 - abs(demographics_a.age - demographics_b.age) / max(
+            demographics_a.age, demographics_b.age
+        )
+
+    def _compare_gender(
+        self, demographics_a: Demographics, demographics_b: Demographics
+    ) -> float:
+        return int(demographics_a.gender == demographics_b.gender)
