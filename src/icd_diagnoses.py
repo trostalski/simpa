@@ -72,8 +72,6 @@ class ICDComparator(BaseComparator):
 
         terminology_base = os.getenv("TERMINOLOGY_SERVER")
         set_similarity_endpoint = "/icd10/similarity/set"
-        print("code set a", code_set_a)
-        print("code set b", code_set_b)
         response = requests.post(
             terminology_base + set_similarity_endpoint,
             json={"nodes_a": code_set_a, "nodes_b": code_set_b},

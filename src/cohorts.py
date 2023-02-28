@@ -7,7 +7,7 @@ from db import PostgresDB
 from demographics import Demographics, DemographicsComparator
 
 from icd_diagnoses import ICDComparator, ICDDiagnosis
-from labevents import LabEvent, LabEventComparator
+from labevents import LabEvent, LabEventComparator, LabEventDistributions
 
 
 class Proband(BaseModel):
@@ -18,11 +18,15 @@ class Proband(BaseModel):
 class SimilarityEncounter:
     def __init__(
         self,
-        conditions: list[ICDDiagnosis],
+        subject_id: int,
+        hadm_id: int,
+        diagnoses: list[ICDDiagnosis],
         demographics: Demographics,
         labevents: list[LabEvent],
     ):
-        self.diagnoses = conditions
+        self.subject_id = subject_id
+        self.hadm_id = hadm_id
+        self.diagnoses = diagnoses
         self.demographics = demographics
         self.labevents = labevents
 
@@ -39,9 +43,7 @@ class Cohort:
         probands = []
         db_result = db.execute_query(query)
         for subject_id, hadm_id in db_result:
-            probands.append(
-                Proband(subject_id=subject_id, hadm_id=hadm_id)
-            )
+            probands.append(Proband(subject_id=subject_id, hadm_id=hadm_id))
         cohort = cls(participants=probands, db=db)
         return cohort
 
@@ -51,6 +53,7 @@ class Cohort:
         self.diagnoses = self.db.get_icd_diagnoses(self.hadm_ids)
         self.labevents = self.db.get_labevents(self.hadm_ids)
         self.similarity_encounters = self._create_similarity_encounters()
+        self.labevent_distribution = LabEventDistributions(self.labevents)
 
     def _create_similarity_encounters(self):
         result = []
@@ -60,8 +63,26 @@ class Cohort:
             for d in self.demographics:
                 if d.subject_id == patient.subject_id:
                     demo = d
-            result.append(SimilarityEncounter(diagnoses, demo, lab))
+            result.append(
+                SimilarityEncounter(
+                    subject_id=patient.subject_id,
+                    hadm_id=patient.hadm_id,
+                    diagnoses=diagnoses,
+                    demographics=demo,
+                    labevents=lab,
+                )
+            )
         return result
+
+    def compare_encounters(self):
+        comparator = EncounterComparator(self.labevent_distribution)
+        for encounter_a in self.similarity_encounters:
+            for encounter_b in self.similarity_encounters:
+                similarity = comparator.compare(encounter_a, encounter_b)
+                if encounter_a.hadm_id == encounter_b.hadm_id:
+                    print("---------- SAME ENCOUNTER ----------")
+                print(encounter_a.subject_id, encounter_b.subject_id)
+                print(similarity)
 
     @property
     def hadm_ids(self):
@@ -73,8 +94,15 @@ class Cohort:
 
 
 class EncounterComparator:
-    def __init__(self):
-        pass
+    def __init__(
+        self,
+        labevent_distributions: LabEventDistributions = None,
+        scale_labevents_by_distribution: bool = True,
+    ):
+        self.labevent_distributions = labevent_distributions
+        if self.labevent_distributions is None:
+            print("No labevent distributions provided. Can not compare labevents.")
+        self.scale_by_distribution = scale_labevents_by_distribution
 
     def compare(
         self,
@@ -108,8 +136,10 @@ class EncounterComparator:
     def _compare_labevents(
         self, labevents_a: list[LabEvent], labevents_b: list[LabEvent]
     ) -> float:
-        comparator = LabEventComparator()
-        return comparator.compare(labevents_a, labevents_b)
+        comparator = LabEventComparator(self.labevent_distributions)
+        return comparator.compare(
+            labevents_a, labevents_b, scale_by_distribution=self.scale_by_distribution
+        )
 
     # def get_tfidf_for_diagnosis(self, diagnosis: ICDDiagnosis):
     #     patient_id = parse_patient_id(condition.subject.reference)

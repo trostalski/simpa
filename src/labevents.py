@@ -67,9 +67,9 @@ class LabEventDistributions:
         units = [o.valueuom for o in self.labevents if o.item_id == item_id]
         # if not len(set(units)) == 1:
         #     print(f"Multiple units found for item_id: {item_id}")
-        if len(values) > 0:
+        if len(values) > 1:
             mean = statistics.mean(values)
-            std = statistics.stdev(values)
+            std = max(statistics.stdev(values), 0.0001)
             return mean, std
         else:
             return None, None
@@ -120,6 +120,7 @@ class LabEventComparator(BaseComparator):
 
         z_a = norm.cdf((value_a - mean) / std)
         z_b = norm.cdf((value_b - mean) / std)
+
         if z_a >= z_b:
             similarity = z_b / z_a
         else:
