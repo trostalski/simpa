@@ -44,25 +44,35 @@ def value_is_numeric(value: str) -> bool:
     return result
 
 
+def get_valid_values_from_labevents_for_itemid(labevents: list[LabEvent], item_id: int):
+    values = []
+    for o in labevents:
+        if (
+            o.item_id == item_id
+            and value_is_valid(o.value)
+            and value_is_numeric(o.value)
+        ):
+            values.append(float(o.value))
+    return values
+
+
 class LabEventDistributions:
     def __init__(self, labevents: list[LabEvent]):
         self.labevents = labevents
 
     def get_mean_std_for_item_id(self, item_id: int):
-        values = []
-        for o in self.labevents:
-            if (
-                o.item_id == item_id
-                and value_is_valid(o.value)
-                and value_is_numeric(o.value)
-            ):
-                values.append(float(o.value))
+        values = get_valid_values_from_labevents_for_itemid(
+            labevents=self.labevents, item_id=item_id
+        )
         units = [o.valueuom for o in self.labevents if o.item_id == item_id]
-        if not len(set(units)) == 1:
-            print(f"Multiple units found for item_id: {item_id}")
-        mean = statistics.mean(values)
-        std = statistics.stdev(values)
-        return mean, std
+        # if not len(set(units)) == 1:
+        #     print(f"Multiple units found for item_id: {item_id}")
+        if len(values) > 0:
+            mean = statistics.mean(values)
+            std = statistics.stdev(values)
+            return mean, std
+        else:
+            return None, None
 
     def get_value_freq_for_labevent(self, labevent: LabEvent):
         values = [o.value for o in self.labevents if o.item_id == labevent.item_id]
@@ -101,6 +111,10 @@ class LabEventComparator(BaseComparator):
         scale_by_percentile: bool = False,
     ):
         mean, std = self.distributions.get_mean_std_for_item_id(labevent_a.item_id)
+
+        if mean is None or std is None:
+            return None
+
         value_a = float(labevent_a.value)
         value_b = float(labevent_b.value)
 
@@ -163,6 +177,29 @@ class LabEventComparator(BaseComparator):
             )
         return similarity
 
+    def _get_mean_labevents(self, labevents: list[LabEvent]) -> list[LabEvent]:
+        item_ids = set([o.item_id for o in labevents])
+        mean_labevents = []
+        for item_id in item_ids:
+            values = get_valid_values_from_labevents_for_itemid(
+                labevents=labevents, item_id=item_id
+            )
+            if len(values) == 0:
+                continue
+            elif len(values) == 1:
+                mean_value = values[0]
+            else:
+                mean_value = statistics.mean(values)
+            mean_labevent = LabEvent(
+                labevent_id=0,  # dummy
+                subject_id=0,  # dummy
+                item_id=item_id,
+                value=mean_value,
+                valueuom=labevents[0].valueuom,
+            )
+            mean_labevents.append(mean_labevent)
+        return mean_labevents
+
     def _compare_set(
         self,
         labevent_set_a: list[LabEvent],
@@ -170,23 +207,19 @@ class LabEventComparator(BaseComparator):
         scale_by_distribution: bool = False,
         aggregation: str = "mean",
     ) -> float:
+        mean_labevents_a = self._get_mean_labevents(labevent_set_a)
+        mean_labevents_b = self._get_mean_labevents(labevent_set_b)
         similarities = []
-        for labevent_a in labevent_set_a:
-            similarities_a = []
-            code_a = labevent_a.item_id
-            for labevent_b in labevent_set_b:
-                code_b = labevent_b.item_id
-                if code_a == code_b:
+        for labevent_a in mean_labevents_a:
+            for labevent_b in mean_labevents_b:
+                if labevent_a.item_id == labevent_b.item_id:
                     similarity = self._compare_pair(
                         labevent_a=labevent_a,
                         labevent_b=labevent_b,
                         scale_by_distribution=scale_by_distribution,
                     )
                     if similarity is not None:
-                        similarities_a.append(similarity)
-            if len(similarities_a) > 0:
-                similarities.append(statistics.mean(similarities_a))
-        if len(similarities) == 0:
-            return 0
-        else:
-            return statistics.mean(similarities)
+                        similarities.append(similarity)
+        if aggregation == "mean":
+            similarity = statistics.mean(similarities)
+        return similarity

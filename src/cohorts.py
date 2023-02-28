@@ -12,7 +12,6 @@ from labevents import LabEvent, LabEventComparator
 
 class Proband(BaseModel):
     subject_id: int
-    stay_id: int
     hadm_id: int
 
 
@@ -39,9 +38,9 @@ class Cohort:
     def from_query(cls, query: str, db: PostgresDB):
         probands = []
         db_result = db.execute_query(query)
-        for subject_id, stay_id, hadm_id in db_result:
+        for subject_id, hadm_id in db_result:
             probands.append(
-                Proband(subject_id=subject_id, stay_id=stay_id, hadm_id=hadm_id)
+                Proband(subject_id=subject_id, hadm_id=hadm_id)
             )
         cohort = cls(participants=probands, db=db)
         return cohort
