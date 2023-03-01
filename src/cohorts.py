@@ -1,13 +1,11 @@
-import os
-from typing import Union
+from functools import cache
 from pydantic import BaseModel
-import requests
 import math
-from db import PostgresDB
-from demographics import Demographics, DemographicsComparator
 
+from db import PostgresDB
 from icd_diagnoses import ICDComparator, ICDDiagnosis
 from labevents import LabEvent, LabEventComparator, LabEventDistributions
+from demographics import Demographics, DemographicsComparator
 
 
 class Proband(BaseModel):
@@ -15,20 +13,22 @@ class Proband(BaseModel):
     hadm_id: int
 
 
-class SimilarityEncounter:
-    def __init__(
-        self,
-        subject_id: int,
-        hadm_id: int,
-        diagnoses: list[ICDDiagnosis],
-        demographics: Demographics,
-        labevents: list[LabEvent],
-    ):
-        self.subject_id = subject_id
-        self.hadm_id = hadm_id
-        self.diagnoses = diagnoses
-        self.demographics = demographics
-        self.labevents = labevents
+class SimilarityEncounter(BaseModel):
+    subject_id: int
+    hadm_id: int
+    diagnoses: list[ICDDiagnosis]
+    demographics: Demographics
+    labevents: list[LabEvent]
+
+
+def get_count_of_encounters_with_diagnosis(
+    input_code: str, all_encounters: tuple[SimilarityEncounter]
+) -> int:
+    counter = 0
+    for encounter in all_encounters:
+        if input_code in [d.code for d in encounter.diagnoses]:
+            counter += 1
+    return counter
 
 
 class Cohort:
@@ -47,13 +47,23 @@ class Cohort:
         cohort = cls(participants=probands, db=db)
         return cohort
 
-    def initialize_data(self):
+    def initialize_data(self, with_tfidf_diagnoses: bool = False):
         """Initialize data for the cohort."""
         self.demographics = self.db.get_patient_demographics(self.subject_ids)
         self.diagnoses = self.db.get_icd_diagnoses(self.hadm_ids)
         self.labevents = self.db.get_labevents(self.hadm_ids)
         self.similarity_encounters = self._create_similarity_encounters()
         self.labevent_distribution = LabEventDistributions(self.labevents)
+        if with_tfidf_diagnoses:
+            self.encounter_with_code_cache = {}
+            self._get_tfidf_scores_for_encounters()
+
+    def _get_tfidf_scores_for_encounters(self) -> dict:
+        for encounter in self.similarity_encounters:
+            for diagnosis in encounter.diagnoses:
+                diagnosis.tfidf_score = self._calculate_tfidf_score(
+                    input_diagnosis=diagnosis, encounter=encounter
+                )
 
     def _create_similarity_encounters(self):
         result = []
@@ -75,14 +85,51 @@ class Cohort:
         return result
 
     def compare_encounters(self):
+        result = []
         comparator = EncounterComparator(self.labevent_distribution)
         for encounter_a in self.similarity_encounters:
             for encounter_b in self.similarity_encounters:
                 similarity = comparator.compare(encounter_a, encounter_b)
                 if encounter_a.hadm_id == encounter_b.hadm_id:
-                    print("---------- SAME ENCOUNTER ----------")
-                print(encounter_a.subject_id, encounter_b.subject_id)
-                print(similarity)
+                    continue
+                result.append(
+                    {
+                        "encounter_a": encounter_a.hadm_id,
+                        "encounter_b": encounter_b.hadm_id,
+                        "similarity": similarity,
+                    }
+                )
+        return result
+
+    def _calculate_tfidf_score(
+        self,
+        input_diagnosis: ICDDiagnosis,
+        encounter: SimilarityEncounter,
+    ) -> dict:
+        encounter_diagnoses = [d for d in encounter.diagnoses]
+        encounter_diagnoses_count = len(encounter_diagnoses)
+        encounter_code_count = len(
+            [d for d in encounter_diagnoses if d.code == input_diagnosis.code]
+        )
+        tf = encounter_code_count / encounter_diagnoses_count
+
+        total_encounters_count = len(self.similarity_encounters)
+
+        if input_diagnosis.code in self.encounter_with_code_cache:
+            encounter_with_code_count = self.encounter_with_code_cache[
+                input_diagnosis.code
+            ]
+        else:
+            encounter_with_code_count = get_count_of_encounters_with_diagnosis(
+                input_code=input_diagnosis.code,
+                all_encounters=self.similarity_encounters,
+            )
+            self.encounter_with_code_cache[
+                input_diagnosis.code
+            ] = encounter_diagnoses_count
+
+        idf = math.log(total_encounters_count / encounter_with_code_count)
+        return tf * idf
 
     @property
     def hadm_ids(self):

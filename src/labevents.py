@@ -4,6 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel
 import statistics
 from scipy.stats import norm
+from functools import lru_cache
 
 from base_comparator import BaseComparator
 
@@ -59,8 +60,13 @@ def get_valid_values_from_labevents_for_itemid(labevents: list[LabEvent], item_i
 class LabEventDistributions:
     def __init__(self, labevents: list[LabEvent]):
         self.labevents = labevents
+        self._mean_std_cache = {}
+        self._value_freq_cache = {}
 
     def get_mean_std_for_item_id(self, item_id: int):
+        if item_id in self._mean_std_cache:
+            return self._mean_std_cache[item_id]
+
         values = get_valid_values_from_labevents_for_itemid(
             labevents=self.labevents, item_id=item_id
         )
@@ -70,14 +76,18 @@ class LabEventDistributions:
         if len(values) > 1:
             mean = statistics.mean(values)
             std = max(statistics.stdev(values), 0.0001)
+            self._mean_std_cache[item_id] = mean, std
             return mean, std
         else:
             return None, None
 
     def get_value_freq_for_labevent(self, labevent: LabEvent):
+        if labevent.item_id in self._value_freq_cache:
+            return self._value_freq_cache[labevent.item_id]
         values = [o.value for o in self.labevents if o.item_id == labevent.item_id]
         count = values.count(labevent.value)
         freq = count / len(values)
+        self._value_freq_cache[labevent.item_id] = freq
         return freq
 
 

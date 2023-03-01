@@ -1,5 +1,5 @@
 import os
-from typing import Union
+from typing import Optional, Union
 import requests
 from pydantic import BaseModel
 from base_comparator import BaseComparator
@@ -14,6 +14,7 @@ class ICDDiagnosis(BaseModel):
     seq_num: int
     code: str
     version: str
+    tfidf_score: Optional[float] = None
 
 
 class ICDComparator(BaseComparator):
