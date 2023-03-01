@@ -155,18 +155,30 @@ class EncounterComparator:
         self,
         encounter_a: SimilarityEncounter,
         encounter_b: SimilarityEncounter,
+        demographics_weight: float = 0.2,
+        diagnoses_weight: float = 0.4,
+        labevents_weight: float = 0.4,
     ) -> dict:
-        return {
-            "demographics": self._compare_demographics(
-                encounter_a.demographics, encounter_b.demographics
-            ),
-            "diagnoses": self._compare_diagnoses(
-                encounter_a.diagnoses, encounter_b.diagnoses
-            ),
-            "labevents": self._compare_labevents(
-                encounter_a.labevents, encounter_b.labevents
-            ),
-        }
+        demographics_sim = self._compare_demographics(
+            demographics_a=encounter_a.demographics,
+            demographics_b=encounter_b.demographics,
+        )
+        diagnoses_sim = self._compare_diagnoses(
+            diagnoses_a=encounter_a.diagnoses,
+            diagnoses_b=encounter_b.diagnoses,
+        )
+        labevents_sim = self._compare_labevents(
+            labevents_a=encounter_a.labevents, labevents_b=encounter_b.labevents
+        )
+        # print(f"Demographics: {demographics_sim}")
+        # print(f"Diagnoses: {diagnoses_sim}")
+        # print(f"Labevents: {labevents_sim}")
+        result = (
+            demographics_sim * demographics_weight
+            + diagnoses_sim * diagnoses_weight
+            + labevents_sim * labevents_weight
+        )
+        return result
 
     def _compare_demographics(
         self, demographics_a: Demographics, demographics_b: Demographics
@@ -175,10 +187,12 @@ class EncounterComparator:
         return comparator.compare(demographics_a, demographics_b)
 
     def _compare_diagnoses(
-        self, diagnoses_a: list[ICDDiagnosis], diagnoses_b: list[ICDDiagnosis]
+        self,
+        diagnoses_a: list[ICDDiagnosis],
+        diagnoses_b: list[ICDDiagnosis],
     ) -> float:
         comparator = ICDComparator()
-        return comparator.compare(diagnoses_a, diagnoses_b)
+        return comparator.compare(diagnoses_a=diagnoses_a, diagnoses_b=diagnoses_b)
 
     def _compare_labevents(
         self, labevents_a: list[LabEvent], labevents_b: list[LabEvent]
@@ -187,25 +201,3 @@ class EncounterComparator:
         return comparator.compare(
             labevents_a, labevents_b, scale_by_distribution=self.scale_by_distribution
         )
-
-    # def get_tfidf_for_diagnosis(self, diagnosis: ICDDiagnosis):
-    #     patient_id = parse_patient_id(condition.subject.reference)
-    #     patient_conditions = self.db.query(ConditionList.code).filter(
-    #         ConditionList.patient_id == patient_id
-    #     )
-    #     patient_condition_count = patient_conditions.count()
-    #     patient_code_count = patient_conditions.filter(
-    #         ConditionList.code == code
-    #     ).count()
-    #     tf = patient_code_count / patient_condition_count
-    #     total_patients_count = (
-    #         self.db.query(ConditionList.patient_id).distinct().count()
-    #     )
-    #     patients_with_code_count = (
-    #         self.db.query(ConditionList.patient_id)
-    #         .filter(ConditionList.code == code)
-    #         .distinct()
-    #         .count()
-    #     )
-    #     idf = math.log(total_patients_count / patients_with_code_count)
-    #     return tf * idf

@@ -54,8 +54,8 @@ class ICDComparator(BaseComparator):
         response = requests.post(
             terminology_base + code_similarity_endpoint,
             json={
-                "node_a": code_a,
-                "node_b": code_b,
+                "node_a": {"code": code_a, "weight": diagnoses_a.tfidf_score},
+                "node_b": {"code": code_b, "weight": diagnoses_b.tfidf_score},
             },
         )
         response.raise_for_status()
@@ -63,19 +63,31 @@ class ICDComparator(BaseComparator):
         return similarity
 
     def _compare_set(
-        self, diagnoses_set_a: list[ICDDiagnosis], diagnoses_set_b: list[ICDDiagnosis]
+        self,
+        diagnoses_set_a: list[ICDDiagnosis],
+        diagnoses_set_b: list[ICDDiagnosis],
     ) -> Union[float, bool]:
-        code_set_a = [d.code for d in diagnoses_set_a]
-        code_set_b = [d.code for d in diagnoses_set_b]
+        nodes_a = []
+        nodes_b = []
 
-        if len(code_set_a) == 0 or len(code_set_b) == 0:
-            return None
+        for diagnosis in diagnoses_set_a:
+            if diagnosis.code is None:
+                continue
+            nodes_a.append({"code": diagnosis.code, "weight": diagnosis.tfidf_score})
+        for diagnosis in diagnoses_set_b:
+            if diagnosis.code is None:
+                continue
+            nodes_b.append({"code": diagnosis.code, "weight": diagnosis.tfidf_score})
 
         terminology_base = os.getenv("TERMINOLOGY_SERVER")
         set_similarity_endpoint = "/icd10/similarity/set"
+
         response = requests.post(
             terminology_base + set_similarity_endpoint,
-            json={"nodes_a": code_set_a, "nodes_b": code_set_b},
+            json={
+                "nodes_a": nodes_a,
+                "nodes_b": nodes_b,
+            },
         )
 
         response.raise_for_status()

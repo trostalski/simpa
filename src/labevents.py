@@ -101,18 +101,20 @@ class LabEventComparator(BaseComparator):
         labevents_b: Union[list[LabEvent], LabEvent],
         scale_by_distribution: bool = False,
     ):
+        result = None
         if isinstance(labevents_a, list) or isinstance(labevents_b, list):
-            return self._compare_set(
+            result = self._compare_set(
                 labevent_set_a=labevents_a,
                 labevent_set_b=labevents_b,
                 scale_by_distribution=scale_by_distribution,
             )
         else:
-            return self._compare_pair(
+            result = self._compare_pair(
                 labevent_a=labevents_a,
                 labevent_b=labevents_b,
                 scale_by_distribution=scale_by_distribution,
             )
+        return result
 
     def _calculate_numeric_similarity(
         self,
@@ -232,5 +234,10 @@ class LabEventComparator(BaseComparator):
                     if similarity is not None:
                         similarities.append(similarity)
         if aggregation == "mean":
-            similarity = statistics.mean(similarities)
+            if len(similarities) == 0:
+                similarity = 0
+            elif len(similarities) == 1:
+                similarity = similarities[0]
+            else:
+                similarity = statistics.mean(similarities)
         return similarity
