@@ -86,19 +86,38 @@ class Cohort:
 
     def compare_encounters(self):
         result = []
+        result_cache = {}
         comparator = EncounterComparator(self.labevent_distribution)
         for encounter_a in self.similarity_encounters:
             for encounter_b in self.similarity_encounters:
-                similarity = comparator.compare(encounter_a, encounter_b)
-                if encounter_a.hadm_id == encounter_b.hadm_id:
-                    continue
-                result.append(
-                    {
-                        "encounter_a": encounter_a.hadm_id,
-                        "encounter_b": encounter_b.hadm_id,
-                        "similarity": similarity,
-                    }
-                )
+                if (
+                    tuple(sorted([encounter_a.hadm_id, encounter_b.hadm_id]))
+                    in result_cache
+                ):
+                    result.append(
+                        {
+                            "encounter_a": encounter_a.hadm_id,
+                            "encounter_b": encounter_b.hadm_id,
+                            "similarity": result_cache[
+                                tuple(
+                                    sorted([encounter_a.hadm_id, encounter_b.hadm_id])
+                                )
+                            ],
+                        }
+                    )
+                else:
+                    similarity = comparator.compare(encounter_a, encounter_b)
+                    result.append(
+                        {
+                            "encounter_a": encounter_a.hadm_id,
+                            "encounter_b": encounter_b.hadm_id,
+                            "similarity": similarity,
+                        }
+                    )
+                    result_cache[
+                        tuple(sorted([encounter_a.hadm_id, encounter_b.hadm_id]))
+                    ] = similarity
+            print(f"Finished encounter {encounter_a.hadm_id}")
         return result
 
     def _calculate_tfidf_score(
