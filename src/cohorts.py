@@ -1,4 +1,3 @@
-from functools import cache
 from pydantic import BaseModel
 import math
 
@@ -6,19 +5,7 @@ from db import PostgresDB
 from icd_diagnoses import ICDComparator, ICDDiagnosis
 from labevents import LabEvent, LabEventComparator, LabEventDistributions
 from demographics import Demographics, DemographicsComparator
-
-
-class Proband(BaseModel):
-    subject_id: int
-    hadm_id: int
-
-
-class SimilarityEncounter(BaseModel):
-    subject_id: int
-    hadm_id: int
-    diagnoses: list[ICDDiagnosis]
-    demographics: Demographics
-    labevents: list[LabEvent]
+from schemas import Proband, SimilarityEncounter
 
 
 def get_count_of_encounters_with_diagnosis(

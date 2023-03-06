@@ -1,7 +1,6 @@
 import psycopg2
-from demographics import Demographics
-from labevents import LabEvent
-from icd_diagnoses import ICDDiagnosis
+
+from schemas import Demographics, ICDDiagnosis, LabEvent
 
 
 class PostgresDB:
@@ -50,12 +49,22 @@ class PostgresDB:
 
         return result
 
+    def get_mean_std_for_itemid(self, itemid: int):
+        query = """
+            SELECT mean, std
+            FROM labevent_statistics
+            WHERE itemid = %s;
+        """
+        db_result = self.execute_query(query, (itemid,))
+        mean, std = db_result[0][0], db_result[0][1]
+        return mean, std
+
     def get_icd_diagnoses(self, hadm_ids: list[int]):
         result = []
         query = "SELECT * FROM mimiciv_hosp.diagnoses_icd WHERE hadm_id = ANY(%s);"
         db_result = self.execute_query(query, (hadm_ids,))
         for subject_id, hadm_id, seq_num, icd_code, icd_version in db_result:
-            icd_code = icd_code.strip() # icd_codes have trailing whitespace
+            icd_code = icd_code.strip()  # icd_codes have trailing whitespace
             result.append(
                 ICDDiagnosis(
                     subject_id=subject_id,

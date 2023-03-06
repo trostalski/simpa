@@ -1,32 +1,11 @@
 import statistics
-from typing import Union, Optional
-from datetime import datetime
-from pydantic import BaseModel
+from typing import Union
 import statistics
 from scipy.stats import norm
-from functools import lru_cache
 
 from base_comparator import BaseComparator
-
-
-class LabEvent(BaseModel):
-    labevent_id: int
-    item_id: int
-    subject_id: int
-    hadm_id: Optional[int]
-    specimen_id: Optional[int]
-    charttime: Optional[datetime]
-    value: Optional[str]
-    valuenum: Optional[float]
-    valueuom: Optional[str]
-    ref_range_lower: Optional[float]
-    ref_range_upper: Optional[float]
-    flag: Optional[str]
-    priority: Optional[str]
-    comments: Optional[str]
-    label: Optional[str]
-    fluid: Optional[str]
-    category: Optional[str]
+from db import PostgresDB
+from schemas import LabEvent
 
 
 def value_is_valid(value: str) -> bool:
@@ -92,8 +71,9 @@ class LabEventDistributions:
 
 
 class LabEventComparator(BaseComparator):
-    def __init__(self, distributions: LabEventDistributions):
+    def __init__(self, db: PostgresDB, distributions: LabEventDistributions = None):
         self.distributions = distributions
+        self.db = db
 
     def compare(
         self,
@@ -122,7 +102,7 @@ class LabEventComparator(BaseComparator):
         labevent_b: LabEvent,
         scale_by_percentile: bool = False,
     ):
-        mean, std = self.distributions.get_mean_std_for_item_id(labevent_a.item_id)
+        mean, std = self.db.get_mean_std_for_item_id(labevent_a.item_id)
 
         if mean is None or std is None:
             return None
@@ -173,21 +153,16 @@ class LabEventComparator(BaseComparator):
             return None
         elif not value_is_valid(value_b):
             return None
+
         if itemid_a != itemid_b:
             return None
 
-        if value_is_numeric(value_a):
-            similarity = self._calculate_numeric_similarity(
-                labevent_a=labevent_a,
-                labevent_b=labevent_b,
-                scale_by_percentile=scale_by_distribution,
-            )
-        else:
-            similarity = self._calculate_categorical_similarity(
-                labevent_a=labevent_a,
-                labevent_b=labevent_b,
-                scale_by_freq=scale_by_distribution,
-            )
+        similarity = self._calculate_numeric_similarity(
+            labevent_a=labevent_a,
+            labevent_b=labevent_b,
+            scale_by_percentile=scale_by_distribution,
+        )
+
         return similarity
 
     def _get_mean_labevents(self, labevents: list[LabEvent]) -> list[LabEvent]:

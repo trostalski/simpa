@@ -3,11 +3,7 @@ import statistics
 from typing import Optional
 from pydantic import BaseModel
 
-
-class Demographics(BaseModel):
-    subject_id: int
-    age: Optional[int]
-    gender: Optional[str]
+from schemas import Demographics
 
 
 class DemographicsComparator:

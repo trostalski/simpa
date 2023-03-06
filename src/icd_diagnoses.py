@@ -5,16 +5,9 @@ from pydantic import BaseModel
 from base_comparator import BaseComparator
 from dotenv import load_dotenv
 
+from schemas import ICDDiagnosis
+
 load_dotenv()
-
-
-class ICDDiagnosis(BaseModel):
-    subject_id: int
-    hadm_id: int
-    seq_num: int
-    code: str
-    version: str
-    tfidf_score: Optional[float] = None
 
 
 class ICDComparator(BaseComparator):
