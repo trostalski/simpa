@@ -102,7 +102,7 @@ class LabEventComparator(BaseComparator):
         labevent_b: LabEvent,
         scale_by_percentile: bool = False,
     ):
-        mean, std = self.db.get_mean_std_for_item_id(labevent_a.item_id)
+        mean, std = self.db.get_mean_std_for_itemid(labevent_a.item_id)
 
         if mean is None or std is None:
             return None

@@ -46,7 +46,6 @@ class PostgresDB:
         db_result = self.execute_query(query, (subject_ids,))
         for subject_id, age, gender in db_result:
             result.append(Demographics(subject_id=subject_id, age=age, gender=gender))
-
         return result
 
     def get_mean_std_for_itemid(self, itemid: int):
