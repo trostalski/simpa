@@ -1,6 +1,6 @@
 import psycopg2
 
-from schemas import Demographics, ICDDiagnosis, LabEvent
+from schemas import Demographics, ICDDiagnosis, LabEvent, VitalSign
 
 
 class PostgresDB:
@@ -42,11 +42,52 @@ class PostgresDB:
 
     def get_patient_demographics(self, subject_ids: list[int]):
         result = []
-        query = "SELECT subject_id, anchor_age, gender FROM mimiciv_hosp.patients WHERE subject_id = ANY(%s);"
+        query = """SELECT p.subject_id, p.anchor_age, p.gender, a.race
+        FROM mimiciv_hosp.patients p, mimiciv_hosp.admissions a
+        WHERE p.subject_id = ANY(%s) AND a.subject_id = p.subject_id;"""
         db_result = self.execute_query(query, (subject_ids,))
-        for subject_id, age, gender in db_result:
-            result.append(Demographics(subject_id=subject_id, age=age, gender=gender))
+        for subject_id, age, gender, ethnicity in db_result:
+            result.append(
+                Demographics(
+                    subject_id=subject_id, age=age, gender=gender, ethnicity=ethnicity
+                )
+            )
         return result
+
+    def get_vitalsigns(self, hadm_ids: list[int]):
+        result = []
+        query = """
+            SELECT subject_id, AVG(heart_rate), AVG(sbp_ni), AVG(dbp_ni), 
+            AVG(mbp_ni), AVG(resp_rate), AVG(temperature), AVG(spo2), AVG(glucose)
+            FROM mimiciv_derived.vitalsign v, mimiciv_icu.icustays i
+            WHERE hadm_id = ANY(%s) AND v.stay_id = i.stay_id
+            GROUP BY i.hadm_id, i.subject_id;
+        """
+        db_result = self.execute_query(query, (hadm_ids,))
+        for (
+            subject_id,
+            heart_rate,
+            sbp,
+            dbp,
+            mbp,
+            resp_rate,
+            temp,
+            spo2,
+            glucose,
+        ) in db_result:
+            result.append(
+                VitalSign(
+                    subject_id=subject_id,
+                    heart_rate=heart_rate,
+                    sbp=sbp,
+                    dbp=dbp,
+                    mbp=mbp,
+                    resp_rate=resp_rate,
+                    temp=temp,
+                    spo2=spo2,
+                    glucose=glucose,
+                )
+            )
 
     def get_labevent_mean_std_for_itemid(self, itemid: int):
         query = """

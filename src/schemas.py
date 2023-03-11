@@ -31,6 +31,21 @@ class LabEvent(BaseModel):
     category: Optional[str]
 
 
+class VitalSign(BaseModel):
+    """Mean values over the entire patient stay"""
+
+    subject_id: int
+    hadm_id: int
+    heart_rate: Optional[float]
+    sbp: Optional[float]
+    dbp: Optional[float]
+    mbp: Optional[float]
+    resp_rate: Optional[float]
+    temp: Optional[float]
+    spo2: Optional[float]
+    glucose: Optional[float]
+
+
 class ICDDiagnosis(BaseModel):
     subject_id: int
     hadm_id: int
