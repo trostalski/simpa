@@ -7,6 +7,8 @@ class Demographics(BaseModel):
     subject_id: int
     age: Optional[int]
     gender: Optional[str]
+    ethnicity: Optional[str]
+    height: Optional[float]
 
 
 class LabEvent(BaseModel):
@@ -41,6 +43,8 @@ class ICDDiagnosis(BaseModel):
 class Proband(BaseModel):
     subject_id: int
     hadm_id: int
+    los_icu: Optional[float]
+    los_hosp: Optional[float]
 
 
 class SimilarityEncounter(BaseModel):
@@ -49,3 +53,11 @@ class SimilarityEncounter(BaseModel):
     diagnoses: list[ICDDiagnosis]
     demographics: Demographics
     labevents: list[LabEvent]
+
+
+class Pharmacy(BaseModel):
+    subject_id: int
+    hadm_id: int
+    pharmacy_id: int
+    medication: str
+    route: str

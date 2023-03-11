@@ -48,7 +48,7 @@ class PostgresDB:
             result.append(Demographics(subject_id=subject_id, age=age, gender=gender))
         return result
 
-    def get_mean_std_for_itemid(self, itemid: int):
+    def get_labevent_mean_std_for_itemid(self, itemid: int):
         query = """
             SELECT mean, std
             FROM labevent_statistics
@@ -124,3 +124,25 @@ class PostgresDB:
                 )
             )
         return result
+
+    def get_endpoints_for_hadm_id(self, hadm_id: int) -> tuple[int, int]:
+        los_icu_result, los_hospital_result = None, None
+        db_result = self.execute_query(  # [(los_icu, los_hospital), ...]
+            """
+            SELECT los_icu, los_hospital
+            FROM mimiciv_derived.icustay_detail
+            Where hadm_id = %s;
+            """,
+            (hadm_id,),
+        )
+
+        for los_icu, los_hospital in db_result:
+            if los_hospital is not None and los_hospital_result is None:
+                los_hospital_result = round(float(los_hospital), 1)
+            if los_icu is not None:
+                if los_icu_result is None:
+                    los_icu_result = round(float(los_icu), 1)
+                else:
+                    los_icu_result += round(float(los_icu), 1)
+
+        return los_icu_result, los_hospital_result

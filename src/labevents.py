@@ -71,8 +71,7 @@ class LabEventDistributions:
 
 
 class LabEventComparator(BaseComparator):
-    def __init__(self, db: PostgresDB, distributions: LabEventDistributions = None):
-        self.distributions = distributions
+    def __init__(self, db: PostgresDB):
         self.db = db
 
     def compare(
@@ -102,7 +101,7 @@ class LabEventComparator(BaseComparator):
         labevent_b: LabEvent,
         scale_by_percentile: bool = False,
     ):
-        mean, std = self.db.get_mean_std_for_itemid(labevent_a.item_id)
+        mean, std = self.db.get_labevent_mean_std_for_itemid(labevent_a.item_id)
 
         if mean is None or std is None:
             return None

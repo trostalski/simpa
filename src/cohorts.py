@@ -4,7 +4,7 @@ import math
 
 from db import PostgresDB
 from icd_diagnoses import ICDComparator, ICDDiagnosis
-from labevents import LabEvent, LabEventComparator, LabEventDistributions
+from labevents import LabEvent, LabEventComparator
 from demographics import Demographics, DemographicsComparator
 from schemas import Proband, SimilarityEncounter
 
@@ -39,6 +39,8 @@ class Cohort:
     ):
         self.participants = participants if participants else []
         self.db = db
+        if len(self.participants) > 0:
+            self._get_endpoints()
 
     @classmethod
     def from_query(cls, query: str, db: PostgresDB):
@@ -58,6 +60,13 @@ class Cohort:
         if with_tfidf_diagnoses:
             self.encounter_with_code_cache = {}
             self._get_tfidf_scores_for_encounters()
+
+    def _get_endpoints(self):
+        for participant in self.participants:
+            (
+                participant.los_icu,
+                participant.los_hosp,
+            ) = self.db.get_endpoints_for_hadm_id(participant.hadm_id)
 
     def _get_tfidf_scores_for_encounters(self) -> dict:
         for encounter in self.similarity_encounters:
@@ -238,6 +247,7 @@ class Cohort:
             self.participants.append(
                 Proband(subject_id=subject_id, stay_id=stay_id, hadm_id=hadm_id)
             )
+        self._get_endpoints()
 
     @property
     def hadm_ids(self):
