@@ -4,7 +4,7 @@ import math
 
 from db import PostgresDB
 from icd_diagnoses import ICDComparator, ICDDiagnosis
-from labevents import LabEvent, LabEventComparator
+from labevents import Vitalsign, LabEventComparator
 from demographics import Demographics, DemographicsComparator
 from schemas import Proband, SimilarityEncounter
 
@@ -330,7 +330,7 @@ class EncounterComparator:
         return comparator.compare(diagnoses_a=diagnoses_a, diagnoses_b=diagnoses_b)
 
     def _compare_labevents(
-        self, labevents_a: list[LabEvent], labevents_b: list[LabEvent]
+        self, labevents_a: list[Vitalsign], labevents_b: list[Vitalsign]
     ) -> float:
         comparator = LabEventComparator(db=self.db)
         return comparator.compare(

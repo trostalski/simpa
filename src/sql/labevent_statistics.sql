@@ -3,13 +3,13 @@
 DROP TABLE IF EXISTS labevent_statistics;
 CREATE TABLE labevent_statistics (
     itemid INTEGER,
-    mean FLOAT,
-    std FLOAT
+    mean_value FLOAT,
+    std_dev FLOAT
 );
-INSERT INTO labevent_statistics (itemid, mean, std)
+INSERT INTO labevent_statistics (itemid, mean_value, std_dev)
 SELECT itemid,
-    AVG(valuenum) AS mean,
-    STDDEV(valuenum) AS std
+    AVG(valuenum) AS mean_value,
+    STDDEV(valuenum) AS std_dev
 FROM mimiciv_hosp.labevents
 WHERE valuenum IS NOT NULL
 GROUP BY itemid;

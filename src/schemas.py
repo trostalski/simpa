@@ -11,7 +11,7 @@ class Demographics(BaseModel):
     height: Optional[float]
 
 
-class LabEvent(BaseModel):
+class Vitalsign(BaseModel):
     labevent_id: int
     item_id: int
     subject_id: int
@@ -31,7 +31,7 @@ class LabEvent(BaseModel):
     category: Optional[str]
 
 
-class VitalSign(BaseModel):
+class Vitalsign(BaseModel):
     """Mean values over the entire patient stay"""
 
     subject_id: int
@@ -67,7 +67,7 @@ class SimilarityEncounter(BaseModel):
     hadm_id: int
     diagnoses: list[ICDDiagnosis]
     demographics: Demographics
-    labevents: list[LabEvent]
+    labevents: list[Vitalsign]
 
 
 class Pharmacy(BaseModel):

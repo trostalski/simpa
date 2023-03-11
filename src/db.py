@@ -1,6 +1,6 @@
 import psycopg2
 
-from schemas import Demographics, ICDDiagnosis, LabEvent, VitalSign
+from schemas import Demographics, ICDDiagnosis, Vitalsign, Vitalsign
 
 
 class PostgresDB:
@@ -76,7 +76,7 @@ class PostgresDB:
             glucose,
         ) in db_result:
             result.append(
-                VitalSign(
+                Vitalsign(
                     subject_id=subject_id,
                     heart_rate=heart_rate,
                     sbp=sbp,
@@ -91,11 +91,21 @@ class PostgresDB:
 
     def get_labevent_mean_std_for_itemid(self, itemid: int):
         query = """
-            SELECT mean, std
+            SELECT mean_value, std_dev
             FROM labevent_statistics
             WHERE itemid = %s;
         """
         db_result = self.execute_query(query, (itemid,))
+        mean, std = db_result[0][0], db_result[0][1]
+        return mean, std
+
+    def get_vitalsign_mean_std_for_vitalsign(self, vitalsign_name: str):
+        query = """
+            SELECT mean_value, std_dev
+            FROM vitalsign_statistics
+            WHERE vitalsign_name = %s;
+        """
+        db_result = self.execute_query(query, (vitalsign_name,))
         mean, std = db_result[0][0], db_result[0][1]
         return mean, std
 
@@ -144,7 +154,7 @@ class PostgresDB:
             category,
         ) in db_result:
             result.append(
-                LabEvent(
+                Vitalsign(
                     labevent_id=id,
                     item_id=item_id,
                     subject_id=subject_id,
