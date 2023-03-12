@@ -40,6 +40,13 @@ class PostgresDB:
             self.conn.rollback()
             print(f"Error executing query: {e}")
 
+    def get_random_hadm_ids(self, n: int):
+        """Get n random hadm_ids."""
+        query = (
+            "SELECT hadm_id FROM mimiciv_hosp.admissions ORDER BY RANDOM() LIMIT %s;"
+        )
+        return [hadm_id for hadm_id, in self.execute_query(query, (n,))]
+
     # Get categories
     def get_patient_demographics(self, subject_ids: list[int]):
         """Get age, gender and race for a list of subject_ids."""
@@ -147,8 +154,8 @@ class PostgresDB:
             hadm_id,
             item_id,
             amount,
-            amount_uom,
-            order_category_name,
+            amountuom,
+            ordercategoryname,
         ) in db_result:
             result.append(
                 InputEvent(
@@ -157,8 +164,8 @@ class PostgresDB:
                     hadm_id=hadm_id,
                     item_id=item_id,
                     amount=amount,
-                    amount_uom=amount_uom,
-                    order_category_name=order_category_name,
+                    amountuom=amountuom,
+                    ordercategoryname=ordercategoryname,
                 )
             )
         return result

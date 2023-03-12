@@ -46,6 +46,9 @@ class DistributionComparator(BaseComparator):
         category: str,
         scale_by_distribution: bool = True,
     ):
+        if a.hadm_id == b.hadm_id:
+            return 1.0
+
         if a.id != b.id:
             return None
 

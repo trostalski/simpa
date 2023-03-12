@@ -53,7 +53,8 @@ class Cohort:
         """Initialize data for the cohort."""
         self.demographics = self.db.get_patient_demographics(self.subject_ids)
         self.diagnoses = self.db.get_icd_diagnoses(self.hadm_ids)
-        self.labevents = self.db.get_mean_labevents(self.hadm_ids)
+        labevents = self.db.get_mean_labevents(self.hadm_ids)
+        self.labevents = [l for l in labevents if l.value is not None]
         self.vitalsigns = self.db.get_mean_vitalsigns(self.hadm_ids)
         self.inputevents = self.db.get_inputevents(self.hadm_ids)
         self.similarity_encounters = self._create_similarity_encounters()
@@ -187,9 +188,12 @@ class Cohort:
     def _get_tfidf_scores_for_encounters(self) -> dict:
         for encounter in self.similarity_encounters:
             for diagnosis in encounter.diagnoses:
-                diagnosis.tfidf_score = self._calculate_tfidf_score(
+                # print(f"Calculating tfidf score for {diagnosis.code}")
+                tfidf_score = self._calculate_tfidf_score(
                     input_diagnosis=diagnosis, encounter=encounter
                 )
+                # print(f"tfidf score: {tfidf_score}")
+                diagnosis.tfidf_score = tfidf_score
 
     def _normalize_categories(self, result: list[dict]) -> list[dict]:
         demographics_sims = [
@@ -285,6 +289,36 @@ class Cohort:
                 Proband(subject_id=subject_id, stay_id=stay_id, hadm_id=hadm_id)
             )
         self._get_endpoints_for_participants()
+
+    def get_random_cohort(self, size: int = 100, reset: bool = False):
+        if reset:
+            self.participants = []
+        query = """
+            SELECT subject_id, hadm_id
+            FROM mimiciv_icu.icustays
+            ORDER BY RANDOM()
+            LIMIT %s;
+        """
+        db_result = self.db.execute_query(query, (size,))
+        for subject_id, hadm_id in db_result:
+            self.participants.append(Proband(subject_id=subject_id, hadm_id=hadm_id))
+        self._get_endpoints_for_participants()
+
+    def remove_encounter_with_missing_category(self):
+        result = []
+        for encounter in self.similarity_encounters:
+            valid = True
+            for value in encounter.dict().values():
+                if not isinstance(value, list):
+                    continue
+                elif len(value) == 0:
+                    valid = False
+            if valid:
+                result.append(encounter)
+        self.similarity_encounters = result
+
+    def reset(self):
+        self.participants = []
 
     @property
     def hadm_ids(self):
