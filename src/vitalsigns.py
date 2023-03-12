@@ -22,8 +22,8 @@ class VitalsignComparator(BaseComparator):
         result = None
         if isinstance(vitalsign_a, list) or isinstance(vitalsign_b, list):
             result = self._compare_set(
-                labevent_set_a=vitalsign_a,
-                labevent_set_b=vitalsign_b,
+                vitalsign_set_a=vitalsign_a,
+                vitalsign_set_b=vitalsign_b,
                 scale_by_distribution=scale_by_distribution,
             )
         else:
@@ -38,9 +38,9 @@ class VitalsignComparator(BaseComparator):
         self,
         vitalsign_a: Vitalsign,
         vitalsign_b: Vitalsign,
-        scale_by_percentile: bool = False,
+        scale_by_distribution: bool = False,
     ):
-        mean, std = self.db.get_labevent_mean_std_for_itemid(vitalsign_a.item_id)
+        mean, std = self.db.get_vitalsign_mean_std_for_name(vitalsign_a.name)
 
         if mean is None or std is None:
             return None
@@ -55,7 +55,7 @@ class VitalsignComparator(BaseComparator):
             similarity = z_b / z_a
         else:
             similarity = z_a / z_b
-        if scale_by_percentile:
+        if scale_by_distribution:
             mean_percentile = (z_a + z_b) / 2
             similarity *= 2 * abs(mean_percentile - 0.5)
         return similarity
@@ -66,8 +66,8 @@ class VitalsignComparator(BaseComparator):
         vitalsign_b: Vitalsign,
         scale_by_distribution: bool = False,
     ) -> float:
-        itemid_a = vitalsign_a.item_id
-        itemid_b = vitalsign_b.item_id
+        name_a = vitalsign_a.name
+        name_b = vitalsign_b.name
 
         value_a = vitalsign_a.value
         value_b = vitalsign_b.value
@@ -77,56 +77,31 @@ class VitalsignComparator(BaseComparator):
         elif not value_is_valid(value_b):
             return None
 
-        if itemid_a != itemid_b:
+        if name_a != name_b:
             return None
 
         similarity = self._calculate_numeric_similarity(
             vitalsign_a=vitalsign_a,
             vitalsign_b=vitalsign_b,
-            scale_by_percentile=scale_by_distribution,
+            scale_by_distribution=scale_by_distribution,
         )
 
         return similarity
 
-    def _get_mean_labevents(self, labevents: list[Vitalsign]) -> list[Vitalsign]:
-        item_ids = set([o.item_id for o in labevents])
-        mean_labevents = []
-        for item_id in item_ids:
-            values = get_valid_values_from_labevents_for_itemid(
-                labevents=labevents, item_id=item_id
-            )
-            if len(values) == 0:
-                continue
-            elif len(values) == 1:
-                mean_value = values[0]
-            else:
-                mean_value = statistics.mean(values)
-            mean_labevent = Vitalsign(
-                labevent_id=0,  # dummy
-                subject_id=0,  # dummy
-                item_id=item_id,
-                value=mean_value,
-                valueuom=labevents[0].valueuom,
-            )
-            mean_labevents.append(mean_labevent)
-        return mean_labevents
-
     def _compare_set(
         self,
-        labevent_set_a: list[Vitalsign],
-        labevent_set_b: list[Vitalsign],
+        vitalsign_set_a: list[Vitalsign],
+        vitalsign_set_b: list[Vitalsign],
         scale_by_distribution: bool = False,
         aggregation: str = "mean",
     ) -> float:
-        mean_labevents_a = self._get_mean_labevents(labevent_set_a)
-        mean_labevents_b = self._get_mean_labevents(labevent_set_b)
         similarities = []
-        for labevent_a in mean_labevents_a:
-            for labevent_b in mean_labevents_b:
-                if labevent_a.item_id == labevent_b.item_id:
+        for vitalsign_a in vitalsign_set_a:
+            for vitalsign_b in vitalsign_set_b:
+                if vitalsign_a.name == vitalsign_b.name:
                     similarity = self._compare_pair(
-                        vitalsign_a=labevent_a,
-                        vitalsign_b=labevent_b,
+                        vitalsign_a=vitalsign_a,
+                        vitalsign_b=vitalsign_b,
                         scale_by_distribution=scale_by_distribution,
                     )
                     if similarity is not None:

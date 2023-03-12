@@ -1,12 +1,12 @@
 from typing import Optional
-from pydantic import BaseModel
 import math
 
 from db import PostgresDB
 from icd_diagnoses import ICDComparator, ICDDiagnosis
-from labevents import Vitalsign, LabEventComparator
-from demographics import Demographics, DemographicsComparator
-from schemas import Proband, SimilarityEncounter
+from labevents import LabEventComparator
+from demographics import DemographicsComparator
+from vitalsigns import VitalsignComparator
+from schemas import Proband, SimilarityEncounter, LabEvent, Vitalsign, Demographics
 
 
 def scale_to_range(input_list: list[int], range_start: int, range_end: int):
@@ -56,6 +56,7 @@ class Cohort:
         self.demographics = self.db.get_patient_demographics(self.subject_ids)
         self.diagnoses = self.db.get_icd_diagnoses(self.hadm_ids)
         self.labevents = self.db.get_labevents(self.hadm_ids)
+        self.vitalsigns = self.db.get_vitalsigns(self.hadm_ids)
         self.similarity_encounters = self._create_similarity_encounters()
         if with_tfidf_diagnoses:
             self.encounter_with_code_cache = {}
@@ -80,6 +81,7 @@ class Cohort:
         for patient in self.participants:
             diagnoses = [d for d in self.diagnoses if d.hadm_id == patient.hadm_id]
             lab = [l for l in self.labevents if l.hadm_id == patient.hadm_id]
+            vitalsigns = [v for v in self.vitalsigns if v.hadm_id == patient.hadm_id]
             for d in self.demographics:
                 if d.subject_id == patient.subject_id:
                     demo = d
@@ -90,15 +92,17 @@ class Cohort:
                     diagnoses=diagnoses,
                     demographics=demo,
                     labevents=lab,
+                    vitalsigns=vitalsigns,
                 )
             )
         return result
 
     def compare_encounters(
         self,
-        demographics_weight: float = 0.2,
-        diagnoses_weight: float = 0.4,
+        demographics_weight: float = 0.1,
+        diagnoses_weight: float = 0.25,
         labevents_weight: float = 0.4,
+        vitalsigns_weight: float = 0.25,
         aggregate_method: str = None,
         normalize_categories: bool = True,
     ):
@@ -271,9 +275,10 @@ class EncounterComparator:
         self,
         encounter_a: SimilarityEncounter,
         encounter_b: SimilarityEncounter,
-        demographics_weight: float = 0.2,
-        diagnoses_weight: float = 0.4,
+        demographics_weight: float = 0.1,
+        diagnoses_weight: float = 0.25,
         labevents_weight: float = 0.4,
+        vitalsigns_weight: float = 0.25,
         aggregate_method: str = None,
     ) -> dict:
         demographics_sim = self._compare_demographics(
@@ -286,6 +291,9 @@ class EncounterComparator:
         )
         labevents_sim = self._compare_labevents(
             labevents_a=encounter_a.labevents, labevents_b=encounter_b.labevents
+        )
+        vitalsign_sim = self._compare_vitalsigns(
+            vitalsigns_a=encounter_a.vitalsigns, vitalsigns_b=encounter_b.vitalsigns
         )
 
         # print(f"Demographics: {demographics_sim}")
@@ -330,9 +338,15 @@ class EncounterComparator:
         return comparator.compare(diagnoses_a=diagnoses_a, diagnoses_b=diagnoses_b)
 
     def _compare_labevents(
-        self, labevents_a: list[Vitalsign], labevents_b: list[Vitalsign]
+        self, labevents_a: list[LabEvent], labevents_b: list[LabEvent]
     ) -> float:
         comparator = LabEventComparator(db=self.db)
         return comparator.compare(
             labevents_a, labevents_b, scale_by_distribution=self.scale_by_distribution
         )
+
+    def _compare_vitalsigns(
+        self, vitalsigns_a: list[Vitalsign], vitalsigns_b: list[Vitalsign]
+    ) -> float:
+        comparator = VitalsignComparator()
+        return comparator.compare(vitalsigns_a, vitalsigns_b)

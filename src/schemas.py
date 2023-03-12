@@ -11,7 +11,7 @@ class Demographics(BaseModel):
     height: Optional[float]
 
 
-class Vitalsign(BaseModel):
+class LabEvent(BaseModel):
     labevent_id: int
     item_id: int
     subject_id: int
@@ -36,14 +36,8 @@ class Vitalsign(BaseModel):
 
     subject_id: int
     hadm_id: int
-    heart_rate: Optional[float]
-    sbp: Optional[float]
-    dbp: Optional[float]
-    mbp: Optional[float]
-    resp_rate: Optional[float]
-    temp: Optional[float]
-    spo2: Optional[float]
-    glucose: Optional[float]
+    name: str
+    value: Optional[float]
 
 
 class ICDDiagnosis(BaseModel):
@@ -65,9 +59,10 @@ class Proband(BaseModel):
 class SimilarityEncounter(BaseModel):
     subject_id: int
     hadm_id: int
-    diagnoses: list[ICDDiagnosis]
     demographics: Demographics
-    labevents: list[Vitalsign]
+    diagnoses: list[ICDDiagnosis]
+    labevents: list[LabEvent]
+    vitalsigns: list[Vitalsign]
 
 
 class Pharmacy(BaseModel):

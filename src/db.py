@@ -56,38 +56,39 @@ class PostgresDB:
 
     def get_vitalsigns(self, hadm_ids: list[int]):
         result = []
+
+        vital_sign_names = [
+            "heart_rate",
+            "sbp_ni",
+            "dbp_ni",
+            "mbp_ni",
+            "resp_rate",
+            "temperature",
+            "spo2",
+            "glucose",
+        ]
+
         query = """
-            SELECT subject_id, AVG(heart_rate), AVG(sbp_ni), AVG(dbp_ni), 
-            AVG(mbp_ni), AVG(resp_rate), AVG(temperature), AVG(spo2), AVG(glucose)
+            SELECT i.subject_id, i.hadm_id, AVG(v.heart_rate), AVG(v.sbp_ni), AVG(v.dbp_ni), 
+            AVG(v.mbp_ni), AVG(v.resp_rate), AVG(v.temperature), AVG(v.spo2), AVG(v.glucose)
             FROM mimiciv_derived.vitalsign v, mimiciv_icu.icustays i
             WHERE hadm_id = ANY(%s) AND v.stay_id = i.stay_id
             GROUP BY i.hadm_id, i.subject_id;
         """
         db_result = self.execute_query(query, (hadm_ids,))
-        for (
-            subject_id,
-            heart_rate,
-            sbp,
-            dbp,
-            mbp,
-            resp_rate,
-            temp,
-            spo2,
-            glucose,
-        ) in db_result:
-            result.append(
-                Vitalsign(
-                    subject_id=subject_id,
-                    heart_rate=heart_rate,
-                    sbp=sbp,
-                    dbp=dbp,
-                    mbp=mbp,
-                    resp_rate=resp_rate,
-                    temp=temp,
-                    spo2=spo2,
-                    glucose=glucose,
+        for values in db_result:
+            subject_id = values[0]
+            hadm_id = values[1]
+            for name, value in zip(vital_sign_names, values[2:]):
+                result.append(
+                    Vitalsign(
+                        subject_id=subject_id,
+                        hadm_id=hadm_id,
+                        name=name,
+                        value=value,
+                    )
                 )
-            )
+        return result
 
     def get_labevent_mean_std_for_itemid(self, itemid: int):
         query = """
@@ -99,7 +100,7 @@ class PostgresDB:
         mean, std = db_result[0][0], db_result[0][1]
         return mean, std
 
-    def get_vitalsign_mean_std_for_vitalsign(self, vitalsign_name: str):
+    def get_vitalsign_mean_std_for_name(self, vitalsign_name: str):
         query = """
             SELECT mean_value, std_dev
             FROM vitalsign_statistics

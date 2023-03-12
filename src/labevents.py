@@ -99,7 +99,7 @@ class LabEventComparator(BaseComparator):
         self,
         labevent_a: LabEvent,
         labevent_b: LabEvent,
-        scale_by_percentile: bool = False,
+        scale_by_distribution: bool = False,
     ):
         mean, std = self.db.get_labevent_mean_std_for_itemid(labevent_a.item_id)
 
@@ -116,7 +116,7 @@ class LabEventComparator(BaseComparator):
             similarity = z_b / z_a
         else:
             similarity = z_a / z_b
-        if scale_by_percentile:
+        if scale_by_distribution:
             mean_percentile = (z_a + z_b) / 2
             similarity *= 2 * abs(mean_percentile - 0.5)
         return similarity
@@ -159,7 +159,7 @@ class LabEventComparator(BaseComparator):
         similarity = self._calculate_numeric_similarity(
             labevent_a=labevent_a,
             labevent_b=labevent_b,
-            scale_by_percentile=scale_by_distribution,
+            scale_by_distribution=scale_by_distribution,
         )
 
         return similarity
