@@ -6,7 +6,15 @@ from icd_diagnoses import ICDComparator, ICDDiagnosis
 from labevents import LabEventComparator
 from demographics import DemographicsComparator
 from vitalsigns import VitalsignComparator
-from schemas import Proband, SimilarityEncounter, LabEvent, Vitalsign, Demographics
+from inputevents import InputEventComparator
+from schemas import (
+    Proband,
+    SimilarityEncounter,
+    LabEvent,
+    Vitalsign,
+    Demographics,
+    InputEvent,
+)
 
 
 def scale_to_range(input_list: list[int], range_start: int, range_end: int):
@@ -57,6 +65,7 @@ class Cohort:
         self.diagnoses = self.db.get_icd_diagnoses(self.hadm_ids)
         self.labevents = self.db.get_labevents(self.hadm_ids)
         self.vitalsigns = self.db.get_vitalsigns(self.hadm_ids)
+        self.inputevents = self.db.get_inputevents(self.hadm_ids)
         self.similarity_encounters = self._create_similarity_encounters()
         if with_tfidf_diagnoses:
             self.encounter_with_code_cache = {}
@@ -82,6 +91,7 @@ class Cohort:
             diagnoses = [d for d in self.diagnoses if d.hadm_id == patient.hadm_id]
             lab = [l for l in self.labevents if l.hadm_id == patient.hadm_id]
             vitalsigns = [v for v in self.vitalsigns if v.hadm_id == patient.hadm_id]
+            inputevents = [i for i in self.inputevents if i.hadm_id == patient.hadm_id]
             for d in self.demographics:
                 if d.subject_id == patient.subject_id:
                     demo = d
@@ -93,6 +103,7 @@ class Cohort:
                     demographics=demo,
                     labevents=lab,
                     vitalsigns=vitalsigns,
+                    inputevents=inputevents,
                 )
             )
         return result
@@ -100,9 +111,10 @@ class Cohort:
     def compare_encounters(
         self,
         demographics_weight: float = 0.1,
-        diagnoses_weight: float = 0.25,
+        diagnoses_weight: float = 0.2,
         labevents_weight: float = 0.4,
-        vitalsigns_weight: float = 0.25,
+        vitalsigns_weight: float = 0.2,
+        inputevents_weight: float = 0.1,
         aggregate_method: str = None,
         normalize_categories: bool = True,
     ):
@@ -133,6 +145,8 @@ class Cohort:
                         demographics_weight=demographics_weight,
                         diagnoses_weight=diagnoses_weight,
                         labevents_weight=labevents_weight,
+                        vitalsigns_weight=vitalsigns_weight,
+                        inputevents_weight=inputevents_weight,
                         aggregate_method=aggregate_method
                         if not normalize_categories
                         else None,
@@ -150,7 +164,7 @@ class Cohort:
             print(f"Finished encounter {encounter_a.hadm_id}")
 
         if normalize_categories:
-            print("Normalizing categories by sclaing to range 0..1")
+            print("Normalizing categories by scaling to range 0..1")
             result = self._normalize_categories(result)
             if aggregate_method == "mean":
                 for r in result:
@@ -162,6 +176,8 @@ class Cohort:
                         demographics_weight * similarities["demographics_sim"]
                         + diagnoses_weight * similarities["diagnoses_sim"]
                         + labevents_weight * similarities["labevents_sim"]
+                        + vitalsigns_weight * similarities["vitalsigns_sim"]
+                        + inputevents_weight * similarities["inputevents_sim"]
                     )
             elif aggregate_method == "rmse":
                 for r in result:
@@ -173,6 +189,8 @@ class Cohort:
                         (demographics_weight * similarities["demographics_sim"] ** 2)
                         + diagnoses_weight * (similarities["diagnoses_sim"] ** 2)
                         + labevents_weight * (similarities["labevents_sim"] ** 2)
+                        + vitalsigns_weight * (similarities["vitalsigns_sim"] ** 2)
+                        + inputevents_weight * (similarities["inputevents_sim"] ** 2)
                     )
         return result
 
@@ -192,6 +210,16 @@ class Cohort:
             for r in result
             if r["encounter_a"] != r["encounter_b"]
         ]
+        vitalsigns_sims = [
+            r["similarity"]["vitalsigns_sim"]
+            for r in result
+            if r["encounter_a"] != r["encounter_b"]
+        ]
+        inputevents_sim = [
+            r["similarity"]["inputevents_sim"]
+            for r in result
+            if r["encounter_a"] != r["encounter_b"]
+        ]
         normalized_demographics_sims = scale_to_range(
             input_list=demographics_sims, range_start=0, range_end=1
         )
@@ -201,6 +229,12 @@ class Cohort:
         normalized_labevents_sims = scale_to_range(
             input_list=labevents_sims, range_start=0, range_end=1
         )
+        normalized_vitalsigns_sims = scale_to_range(
+            input_list=vitalsigns_sims, range_start=0, range_end=1
+        )
+        normalized_inputevents_sims = scale_to_range(
+            input_list=inputevents_sim, range_start=0, range_end=1
+        )
 
         for i, r in enumerate(
             [r for r in result if r["encounter_a"] != r["encounter_b"]]
@@ -208,6 +242,8 @@ class Cohort:
             r["similarity"]["demographics_sim"] = normalized_demographics_sims[i]
             r["similarity"]["diagnoses_sim"] = normalized_diagnoses_sims[i]
             r["similarity"]["labevents_sim"] = normalized_labevents_sims[i]
+            r["similarity"]["vitalsigns_sim"] = normalized_vitalsigns_sims[i]
+            r["similarity"]["inputevents_sim"] = normalized_inputevents_sims[i]
         return result
 
     def _calculate_tfidf_score(
@@ -276,9 +312,10 @@ class EncounterComparator:
         encounter_a: SimilarityEncounter,
         encounter_b: SimilarityEncounter,
         demographics_weight: float = 0.1,
-        diagnoses_weight: float = 0.25,
+        diagnoses_weight: float = 0.2,
         labevents_weight: float = 0.4,
-        vitalsigns_weight: float = 0.25,
+        vitalsigns_weight: float = 0.2,
+        inputevents_weight: float = 0.1,
         aggregate_method: str = None,
     ) -> dict:
         demographics_sim = self._compare_demographics(
@@ -295,6 +332,9 @@ class EncounterComparator:
         vitalsign_sim = self._compare_vitalsigns(
             vitalsigns_a=encounter_a.vitalsigns, vitalsigns_b=encounter_b.vitalsigns
         )
+        inputevents_sim = self._compare_inputevents(
+            inputevents_a=encounter_a.inputevents, inputevents_b=encounter_b.inputevents
+        )
 
         # print(f"Demographics: {demographics_sim}")
         # print(f"Diagnoses: {diagnoses_sim}")
@@ -306,18 +346,24 @@ class EncounterComparator:
                 "demographics_sim": demographics_sim,
                 "diagnoses_sim": diagnoses_sim,
                 "labevents_sim": labevents_sim,
+                "vitalsigns_sim": vitalsign_sim,
+                "inputevents_sim": inputevents_sim,
             }
         elif aggregate_method == "mean":
             result = (
                 demographics_sim * demographics_weight
                 + diagnoses_sim * diagnoses_weight
                 + labevents_sim * labevents_weight
+                + vitalsign_sim * vitalsigns_weight
+                + inputevents_sim * inputevents_weight
             )
         elif aggregate_method == "rmse":
             result = math.sqrt(
                 (demographics_sim**2 * demographics_weight)
                 + (diagnoses_sim**2 * diagnoses_weight)
                 + (labevents_sim**2 * labevents_weight)
+                + (vitalsign_sim**2 * vitalsigns_weight)
+                + (inputevents_sim**2 * inputevents_weight)
             )
         else:
             raise ValueError(f"Unknown aggregate method {aggregate_method}")
@@ -348,5 +394,11 @@ class EncounterComparator:
     def _compare_vitalsigns(
         self, vitalsigns_a: list[Vitalsign], vitalsigns_b: list[Vitalsign]
     ) -> float:
-        comparator = VitalsignComparator()
+        comparator = VitalsignComparator(db=self.db)
         return comparator.compare(vitalsigns_a, vitalsigns_b)
+
+    def _compare_inputevents(
+        self, inputevents_a: list[InputEvent], inputevents_b: list[InputEvent]
+    ) -> float:
+        comparator = InputEventComparator(db=self.db)
+        return comparator.compare(inputevents_a, inputevents_b)

@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from datetime import datetime
 
 
@@ -40,6 +40,19 @@ class Vitalsign(BaseModel):
     value: Optional[float]
 
 
+class InputEvent(BaseModel):
+    subject_id: int
+    hadm_id: int
+    item_id: int
+    amount: Optional[float]
+    amountuom: Optional[str]
+    ordercategoryname: Optional[str]
+
+    @validator("amount")
+    def round_amount(cls, v):
+        return round(v, 2)
+
+
 class ICDDiagnosis(BaseModel):
     subject_id: int
     hadm_id: int
@@ -63,6 +76,7 @@ class SimilarityEncounter(BaseModel):
     diagnoses: list[ICDDiagnosis]
     labevents: list[LabEvent]
     vitalsigns: list[Vitalsign]
+    inputevents: list[InputEvent]
 
 
 class Pharmacy(BaseModel):

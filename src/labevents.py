@@ -78,7 +78,7 @@ class LabEventComparator(BaseComparator):
         self,
         labevents_a: Union[list[LabEvent], LabEvent],
         labevents_b: Union[list[LabEvent], LabEvent],
-        scale_by_distribution: bool = False,
+        scale_by_distribution: bool = True,
     ):
         result = None
         if isinstance(labevents_a, list) or isinstance(labevents_b, list):
@@ -99,7 +99,7 @@ class LabEventComparator(BaseComparator):
         self,
         labevent_a: LabEvent,
         labevent_b: LabEvent,
-        scale_by_distribution: bool = False,
+        scale_by_distribution: bool,
     ):
         mean, std = self.db.get_labevent_mean_std_for_itemid(labevent_a.item_id)
 
@@ -140,10 +140,13 @@ class LabEventComparator(BaseComparator):
         self,
         labevent_a: LabEvent,
         labevent_b: LabEvent,
-        scale_by_distribution: bool = False,
+        scale_by_distribution: bool,
     ) -> float:
         itemid_a = labevent_a.item_id
         itemid_b = labevent_b.item_id
+
+        if itemid_a != itemid_b:
+            return None
 
         value_a = labevent_a.value
         value_b = labevent_b.value
@@ -151,9 +154,6 @@ class LabEventComparator(BaseComparator):
         if not value_is_valid(value_a):
             return None
         elif not value_is_valid(value_b):
-            return None
-
-        if itemid_a != itemid_b:
             return None
 
         similarity = self._calculate_numeric_similarity(
@@ -191,7 +191,7 @@ class LabEventComparator(BaseComparator):
         self,
         labevent_set_a: list[LabEvent],
         labevent_set_b: list[LabEvent],
-        scale_by_distribution: bool = False,
+        scale_by_distribution: bool,
         aggregation: str = "mean",
     ) -> float:
         mean_labevents_a = self._get_mean_labevents(labevent_set_a)

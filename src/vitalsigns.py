@@ -17,7 +17,7 @@ class VitalsignComparator(BaseComparator):
         self,
         vitalsign_a: Union[list[Vitalsign], Vitalsign],
         vitalsign_b: Union[list[Vitalsign], Vitalsign],
-        scale_by_distribution: bool = False,
+        scale_by_distribution: bool = True,
     ):
         result = None
         if isinstance(vitalsign_a, list) or isinstance(vitalsign_b, list):
@@ -38,7 +38,7 @@ class VitalsignComparator(BaseComparator):
         self,
         vitalsign_a: Vitalsign,
         vitalsign_b: Vitalsign,
-        scale_by_distribution: bool = False,
+        scale_by_distribution: bool,
     ):
         mean, std = self.db.get_vitalsign_mean_std_for_name(vitalsign_a.name)
 
@@ -64,10 +64,13 @@ class VitalsignComparator(BaseComparator):
         self,
         vitalsign_a: Vitalsign,
         vitalsign_b: Vitalsign,
-        scale_by_distribution: bool = False,
+        scale_by_distribution: bool,
     ) -> float:
         name_a = vitalsign_a.name
         name_b = vitalsign_b.name
+
+        if name_a != name_b:
+            return None
 
         value_a = vitalsign_a.value
         value_b = vitalsign_b.value
@@ -75,9 +78,6 @@ class VitalsignComparator(BaseComparator):
         if not value_is_valid(value_a):
             return None
         elif not value_is_valid(value_b):
-            return None
-
-        if name_a != name_b:
             return None
 
         similarity = self._calculate_numeric_similarity(
@@ -92,7 +92,7 @@ class VitalsignComparator(BaseComparator):
         self,
         vitalsign_set_a: list[Vitalsign],
         vitalsign_set_b: list[Vitalsign],
-        scale_by_distribution: bool = False,
+        scale_by_distribution: bool,
         aggregation: str = "mean",
     ) -> float:
         similarities = []

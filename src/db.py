@@ -1,6 +1,6 @@
 import psycopg2
 
-from schemas import Demographics, ICDDiagnosis, Vitalsign, Vitalsign
+from schemas import Demographics, ICDDiagnosis, LabEvent, Vitalsign, InputEvent
 
 
 class PostgresDB:
@@ -127,6 +127,32 @@ class PostgresDB:
             )
         return result
 
+    def get_inputevents(self, hadm_ids: list[int]):
+        result = []
+        query = """SELECT subject_id, hadm_id, itemid, amount, amountuom, ordercategoryname
+                FROM mimiciv_icu.inputevents
+                WHERE hadm_id = ANY(%s);"""
+        db_result = self.execute_query(query, (hadm_ids,))
+        for (
+            subject_id,
+            hadm_id,
+            item_id,
+            amount,
+            amount_uom,
+            order_category_name,
+        ) in db_result:
+            result.append(
+                InputEvent(
+                    subject_id=subject_id,
+                    hadm_id=hadm_id,
+                    item_id=item_id,
+                    amount=amount,
+                    amount_uom=amount_uom,
+                    order_category_name=order_category_name,
+                )
+            )
+        return result
+
     def get_labevents(self, hadm_ids: list[int]):
         result = []
         query = """SELECT labevent_id, le.itemid, subject_id, hadm_id, specimen_id, charttime,
@@ -155,7 +181,7 @@ class PostgresDB:
             category,
         ) in db_result:
             result.append(
-                Vitalsign(
+                LabEvent(
                     labevent_id=id,
                     item_id=item_id,
                     subject_id=subject_id,
