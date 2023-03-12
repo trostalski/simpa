@@ -1,12 +1,14 @@
 from typing import Optional
 import math
 
+from helper import scale_to_range
 from db import PostgresDB
 from icd_diagnoses import ICDComparator, ICDDiagnosis
 from labevents import LabEventComparator
 from demographics import DemographicsComparator
 from vitalsigns import VitalsignComparator
 from inputevents import InputEventComparator
+from base_comparators import BaseComparator
 from schemas import (
     Proband,
     SimilarityEncounter,
@@ -15,16 +17,6 @@ from schemas import (
     Demographics,
     InputEvent,
 )
-
-
-def scale_to_range(input_list: list[int], range_start: int, range_end: int):
-    min_value = min(input_list)
-    max_value = max(input_list)
-    return [
-        ((value - min_value) / (max_value - min_value)) * (range_end - range_start)
-        + range_start
-        for value in input_list
-    ]
 
 
 def get_count_of_encounters_with_diagnosis(
@@ -38,8 +30,6 @@ def get_count_of_encounters_with_diagnosis(
 
 
 class Cohort:
-    participants: list[Proband]
-
     def __init__(
         self,
         db: PostgresDB,
@@ -48,7 +38,7 @@ class Cohort:
         self.participants = participants if participants else []
         self.db = db
         if len(self.participants) > 0:
-            self._get_endpoints()
+            self._get_endpoints_for_participants()
 
     @classmethod
     def from_query(cls, query: str, db: PostgresDB):
@@ -71,43 +61,6 @@ class Cohort:
             self.encounter_with_code_cache = {}
             self._get_tfidf_scores_for_encounters()
 
-    def _get_endpoints(self):
-        for participant in self.participants:
-            (
-                participant.los_icu,
-                participant.los_hosp,
-            ) = self.db.get_endpoints_for_hadm_id(participant.hadm_id)
-
-    def _get_tfidf_scores_for_encounters(self) -> dict:
-        for encounter in self.similarity_encounters:
-            for diagnosis in encounter.diagnoses:
-                diagnosis.tfidf_score = self._calculate_tfidf_score(
-                    input_diagnosis=diagnosis, encounter=encounter
-                )
-
-    def _create_similarity_encounters(self):
-        result = []
-        for patient in self.participants:
-            diagnoses = [d for d in self.diagnoses if d.hadm_id == patient.hadm_id]
-            lab = [l for l in self.labevents if l.hadm_id == patient.hadm_id]
-            vitalsigns = [v for v in self.vitalsigns if v.hadm_id == patient.hadm_id]
-            inputevents = [i for i in self.inputevents if i.hadm_id == patient.hadm_id]
-            for d in self.demographics:
-                if d.subject_id == patient.subject_id:
-                    demo = d
-            result.append(
-                SimilarityEncounter(
-                    subject_id=patient.subject_id,
-                    hadm_id=patient.hadm_id,
-                    diagnoses=diagnoses,
-                    demographics=demo,
-                    labevents=lab,
-                    vitalsigns=vitalsigns,
-                    inputevents=inputevents,
-                )
-            )
-        return result
-
     def compare_encounters(
         self,
         demographics_weight: float = 0.1,
@@ -117,6 +70,7 @@ class Cohort:
         inputevents_weight: float = 0.1,
         aggregate_method: str = None,
         normalize_categories: bool = True,
+        scale_by_distribution: bool = True,
     ):
         result = []
         result_cache = {}
@@ -147,6 +101,7 @@ class Cohort:
                         labevents_weight=labevents_weight,
                         vitalsigns_weight=vitalsigns_weight,
                         inputevents_weight=inputevents_weight,
+                        scale_by_distribution=scale_by_distribution,
                         aggregate_method=aggregate_method
                         if not normalize_categories
                         else None,
@@ -165,7 +120,12 @@ class Cohort:
 
         if normalize_categories:
             print("Normalizing categories by scaling to range 0..1")
-            result = self._normalize_categories(result)
+            try:
+                result = self._normalize_categories(result)
+            except Exception as e:
+                print("Failed to normalize categories")
+                print("result: ", result)
+                raise e
             if aggregate_method == "mean":
                 for r in result:
                     if r["encounter_a"] == r["encounter_b"]:
@@ -193,6 +153,43 @@ class Cohort:
                         + inputevents_weight * (similarities["inputevents_sim"] ** 2)
                     )
         return result
+
+    def _create_similarity_encounters(self):
+        result = []
+        for patient in self.participants:
+            diagnoses = [d for d in self.diagnoses if d.hadm_id == patient.hadm_id]
+            lab = [l for l in self.labevents if l.hadm_id == patient.hadm_id]
+            vitalsigns = [v for v in self.vitalsigns if v.hadm_id == patient.hadm_id]
+            inputevents = [i for i in self.inputevents if i.hadm_id == patient.hadm_id]
+            for d in self.demographics:
+                if d.subject_id == patient.subject_id:
+                    demo = d
+            result.append(
+                SimilarityEncounter(
+                    subject_id=patient.subject_id,
+                    hadm_id=patient.hadm_id,
+                    diagnoses=diagnoses,
+                    demographics=demo,
+                    labevents=lab,
+                    vitalsigns=vitalsigns,
+                    inputevents=inputevents,
+                )
+            )
+        return result
+
+    def _get_endpoints_for_participants(self):
+        for participant in self.participants:
+            (
+                participant.los_icu,
+                participant.los_hosp,
+            ) = self.db.get_endpoints_for_hadm_id(participant.hadm_id)
+
+    def _get_tfidf_scores_for_encounters(self) -> dict:
+        for encounter in self.similarity_encounters:
+            for diagnosis in encounter.diagnoses:
+                diagnosis.tfidf_score = self._calculate_tfidf_score(
+                    input_diagnosis=diagnosis, encounter=encounter
+                )
 
     def _normalize_categories(self, result: list[dict]) -> list[dict]:
         demographics_sims = [
@@ -287,7 +284,7 @@ class Cohort:
             self.participants.append(
                 Proband(subject_id=subject_id, stay_id=stay_id, hadm_id=hadm_id)
             )
-        self._get_endpoints()
+        self._get_endpoints_for_participants()
 
     @property
     def hadm_ids(self):
@@ -302,9 +299,7 @@ class EncounterComparator:
     def __init__(
         self,
         db: PostgresDB = None,
-        scale_labevents_by_distribution: bool = True,
     ):
-        self.scale_by_distribution = scale_labevents_by_distribution
         self.db = db
 
     def compare(
@@ -317,24 +312,34 @@ class EncounterComparator:
         vitalsigns_weight: float = 0.2,
         inputevents_weight: float = 0.1,
         aggregate_method: str = None,
+        scale_by_distribution: bool = True,
     ) -> dict:
         demographics_sim = self._compare_demographics(
             demographics_a=encounter_a.demographics,
             demographics_b=encounter_b.demographics,
         )
+        # print("compared demographics")
         diagnoses_sim = self._compare_diagnoses(
             diagnoses_a=encounter_a.diagnoses,
             diagnoses_b=encounter_b.diagnoses,
         )
+        # print("compared diagnoses")
         labevents_sim = self._compare_labevents(
-            labevents_a=encounter_a.labevents, labevents_b=encounter_b.labevents
+            labevents_a=encounter_a.labevents,
+            labevents_b=encounter_b.labevents,
+            scale_by_distribution=scale_by_distribution,
         )
+        # print("compared labevents")
         vitalsign_sim = self._compare_vitalsigns(
-            vitalsigns_a=encounter_a.vitalsigns, vitalsigns_b=encounter_b.vitalsigns
+            vitalsigns_a=encounter_a.vitalsigns,
+            vitalsigns_b=encounter_b.vitalsigns,
+            scale_by_distribution=scale_by_distribution,
         )
+        # print("compared vitalsigns")
         inputevents_sim = self._compare_inputevents(
             inputevents_a=encounter_a.inputevents, inputevents_b=encounter_b.inputevents
         )
+        # print("compared inputevents")
 
         # print(f"Demographics: {demographics_sim}")
         # print(f"Diagnoses: {diagnoses_sim}")
@@ -384,18 +389,26 @@ class EncounterComparator:
         return comparator.compare(diagnoses_a=diagnoses_a, diagnoses_b=diagnoses_b)
 
     def _compare_labevents(
-        self, labevents_a: list[LabEvent], labevents_b: list[LabEvent]
+        self,
+        labevents_a: list[LabEvent],
+        labevents_b: list[LabEvent],
+        scale_by_distribution: bool,
     ) -> float:
         comparator = LabEventComparator(db=self.db)
         return comparator.compare(
-            labevents_a, labevents_b, scale_by_distribution=self.scale_by_distribution
+            labevents_a, labevents_b, scale_by_distribution=scale_by_distribution
         )
 
     def _compare_vitalsigns(
-        self, vitalsigns_a: list[Vitalsign], vitalsigns_b: list[Vitalsign]
+        self,
+        vitalsigns_a: list[Vitalsign],
+        vitalsigns_b: list[Vitalsign],
+        scale_by_distribution: bool,
     ) -> float:
         comparator = VitalsignComparator(db=self.db)
-        return comparator.compare(vitalsigns_a, vitalsigns_b)
+        return comparator.compare(
+            vitalsigns_a, vitalsigns_b, scale_by_distribution=scale_by_distribution
+        )
 
     def _compare_inputevents(
         self, inputevents_a: list[InputEvent], inputevents_b: list[InputEvent]

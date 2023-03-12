@@ -43,18 +43,21 @@ class DistributionComparator(BaseComparator):
         self,
         a: DistributionCategory,
         b: DistributionCategory,
-        get_mean_std_func: Callable,
+        category: str,
         scale_by_distribution: bool = True,
     ):
         if a.id != b.id:
             return None
 
-        if not value_is_valid(value_a):
+        if not value_is_valid(a.value):
             return None
-        elif not value_is_valid(value_b):
+        elif not value_is_valid(b.value):
             return None
 
-        mean, std = get_mean_std_func(a)
+        if category == "labevents":
+            mean, std = self.db.get_labevent_mean_std_for_itemid(a.id)
+        elif category == "vitalsigns":
+            mean, std = self.db.get_vitalsign_mean_std_for_name(a.id)
 
         if mean is None or std is None:
             return None
@@ -79,6 +82,7 @@ class DistributionComparator(BaseComparator):
         set_a: list[DistributionCategory],
         set_b: list[DistributionCategory],
         scale_by_distribution: bool,
+        category: str,
         aggregation: str = "mean",
     ) -> float:
         similarities = []
@@ -88,6 +92,7 @@ class DistributionComparator(BaseComparator):
                     similarity = self._compare_pair(
                         a=a,
                         b=b,
+                        category=category,
                         scale_by_distribution=scale_by_distribution,
                     )
                     if similarity is not None:
@@ -102,9 +107,19 @@ class DistributionComparator(BaseComparator):
         return similarity
 
 
-class OntologyComparator(BaseComparator):
-    pass
-
-
 class BinaryComparator(BaseComparator):
-    pass
+    def __init__(self):
+        pass
+
+    def compare(self, a, b, *args, **kwargs):
+        return super().compare(a, b, *args, **kwargs)
+
+    def _compare_pair(self, a, b):
+        return int(a.value == b.value)
+
+    def _compare_set(self, set_a, set_b):
+        set_a = set([i.item_id for i in set_a])
+        set_b = set([i.item_id for i in set_b])
+        intersection = set_a.intersection(set_b)
+        union = set_a.union(set_b)
+        return len(intersection) / len(union)

@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import Optional, Union, Any
 from pydantic import BaseModel, validator
 from datetime import datetime
 
@@ -6,6 +6,10 @@ from datetime import datetime
 class DistributionCategory(BaseModel):
     id: Union[int, str]
     value: Optional[float]
+
+
+class BinaryCategory(BaseModel):
+    value: Any
 
 
 class Demographics(BaseModel):
@@ -29,7 +33,7 @@ class Vitalsign(DistributionCategory):
     name: str
 
 
-class InputEvent(BaseModel):
+class InputEvent(BinaryCategory):
     subject_id: int
     hadm_id: int
     item_id: int

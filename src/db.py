@@ -152,6 +152,7 @@ class PostgresDB:
         ) in db_result:
             result.append(
                 InputEvent(
+                    value=item_id,
                     subject_id=subject_id,
                     hadm_id=hadm_id,
                     item_id=item_id,
