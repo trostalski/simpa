@@ -2,7 +2,7 @@ import os
 from typing import Optional, Union
 import requests
 from pydantic import BaseModel
-from base_comparator import BaseComparator
+from base_comparators import BaseComparator
 from dotenv import load_dotenv
 
 from schemas import ICDDiagnosis

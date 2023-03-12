@@ -40,7 +40,9 @@ class PostgresDB:
             self.conn.rollback()
             print(f"Error executing query: {e}")
 
+    # Get categories
     def get_patient_demographics(self, subject_ids: list[int]):
+        """Get age, gender and race for a list of subject_ids."""
         result = []
         query = """SELECT p.subject_id, p.anchor_age, p.gender, a.race
         FROM mimiciv_hosp.patients p, mimiciv_hosp.admissions a
@@ -54,9 +56,9 @@ class PostgresDB:
             )
         return result
 
-    def get_vitalsigns(self, hadm_ids: list[int]):
+    def get_mean_vitalsigns(self, hadm_ids: list[int]):
+        """Get mean vital signs for a list of hadm_ids."""
         result = []
-
         vital_sign_names = [
             "heart_rate",
             "sbp_ni",
@@ -67,7 +69,6 @@ class PostgresDB:
             "spo2",
             "glucose",
         ]
-
         query = """
             SELECT i.subject_id, i.hadm_id, AVG(v.heart_rate), AVG(v.sbp_ni), AVG(v.dbp_ni), 
             AVG(v.mbp_ni), AVG(v.resp_rate), AVG(v.temperature), AVG(v.spo2), AVG(v.glucose)
@@ -82,6 +83,7 @@ class PostgresDB:
             for name, value in zip(vital_sign_names, values[2:]):
                 result.append(
                     Vitalsign(
+                        id=name,
                         subject_id=subject_id,
                         hadm_id=hadm_id,
                         name=name,
@@ -90,25 +92,32 @@ class PostgresDB:
                 )
         return result
 
-    def get_labevent_mean_std_for_itemid(self, itemid: int):
-        query = """
-            SELECT mean_value, std_dev
-            FROM labevent_statistics
-            WHERE itemid = %s;
-        """
-        db_result = self.execute_query(query, (itemid,))
-        mean, std = db_result[0][0], db_result[0][1]
-        return mean, std
-
-    def get_vitalsign_mean_std_for_name(self, vitalsign_name: str):
-        query = """
-            SELECT mean_value, std_dev
-            FROM vitalsign_statistics
-            WHERE vitalsign_name = %s;
-        """
-        db_result = self.execute_query(query, (vitalsign_name,))
-        mean, std = db_result[0][0], db_result[0][1]
-        return mean, std
+    def get_mean_labevents(self, hadm_ids: list[int]):
+        result = []
+        query = """SELECT itemid, subject_id, hadm_id, AVG(valuenum), valueuom
+                FROM mimiciv_hosp.labevents
+                WHERE hadm_id = ANY(%s)
+                GROUP BY itemid, hadm_id, subject_id, valueuom;
+                """
+        db_result = self.execute_query(query, (hadm_ids,))
+        for (
+            item_id,
+            subject_id,
+            hadm_id,
+            valuenum,
+            valueuom,
+        ) in db_result:
+            result.append(
+                LabEvent(
+                    id=item_id,
+                    item_id=item_id,
+                    subject_id=subject_id,
+                    hadm_id=hadm_id,
+                    value=valuenum,
+                    valueuom=valueuom,
+                )
+            )
+        return result
 
     def get_icd_diagnoses(self, hadm_ids: list[int]):
         result = []
@@ -153,56 +162,28 @@ class PostgresDB:
             )
         return result
 
-    def get_labevents(self, hadm_ids: list[int]):
-        result = []
-        query = """SELECT labevent_id, le.itemid, subject_id, hadm_id, specimen_id, charttime,
-                value, valuenum, valueuom, ref_range_lower, ref_range_upper, flag,
-                priority, comments, label, fluid, category 
-                FROM mimiciv_hosp.labevents le, mimiciv_hosp.d_labitems li 
-                WHERE le.itemid = li.itemid and le.hadm_id = ANY(%s);"""
-        db_result = self.execute_query(query, (hadm_ids,))
-        for (
-            id,
-            item_id,
-            subject_id,
-            hadm_id,
-            speciment_id,
-            charttime,
-            value,
-            valuenum,
-            valueuom,
-            ref_range_lower,
-            ref_range_upper,
-            flag,
-            priority,
-            comments,
-            label,
-            fluid,
-            category,
-        ) in db_result:
-            result.append(
-                LabEvent(
-                    labevent_id=id,
-                    item_id=item_id,
-                    subject_id=subject_id,
-                    hadm_id=hadm_id,
-                    specimen_id=speciment_id,
-                    charttime=charttime,
-                    value=value,
-                    valuenum=valuenum,
-                    valueuom=valueuom,
-                    ref_range_lower=ref_range_lower,
-                    ref_range_upper=ref_range_upper,
-                    flag=flag,
-                    priority=priority,
-                    comments=comments,
-                    label=label,
-                    fluid=fluid,
-                    category=category,
-                )
-            )
-        return result
+    # Get statistics
+    def get_labevent_mean_std_for_itemid(self, itemid: int):
+        query = """
+            SELECT mean_value, std_dev
+            FROM labevent_statistics
+            WHERE itemid = %s;
+        """
+        db_result = self.execute_query(query, (itemid,))
+        mean, std = db_result[0][0], db_result[0][1]
+        return mean, std
 
+    def get_vitalsign_mean_std_for_name(self, vitalsign_name: str):
+        query = """
+            SELECT mean_value, std_dev
+            FROM vitalsign_statistics
+            WHERE vitalsign_name = %s;
+        """
+        db_result = self.execute_query(query, (vitalsign_name,))
+        mean, std = db_result[0][0], db_result[0][1]
+        return mean, std
+
+    # Get endpoints
     def get_endpoints_for_hadm_id(self, hadm_id: int) -> tuple[int, int]:
         los_icu_result, los_hospital_result = None, None
         db_result = self.execute_query(  # [(los_icu, los_hospital), ...]

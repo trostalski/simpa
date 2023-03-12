@@ -3,7 +3,7 @@ from typing import Union
 import statistics
 from scipy.stats import norm
 
-from base_comparator import BaseComparator
+from base_comparators import BaseComparator
 from db import PostgresDB
 from schemas import Vitalsign
 from labevents import value_is_valid

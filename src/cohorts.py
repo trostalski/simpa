@@ -63,8 +63,8 @@ class Cohort:
         """Initialize data for the cohort."""
         self.demographics = self.db.get_patient_demographics(self.subject_ids)
         self.diagnoses = self.db.get_icd_diagnoses(self.hadm_ids)
-        self.labevents = self.db.get_labevents(self.hadm_ids)
-        self.vitalsigns = self.db.get_vitalsigns(self.hadm_ids)
+        self.labevents = self.db.get_mean_labevents(self.hadm_ids)
+        self.vitalsigns = self.db.get_mean_vitalsigns(self.hadm_ids)
         self.inputevents = self.db.get_inputevents(self.hadm_ids)
         self.similarity_encounters = self._create_similarity_encounters()
         if with_tfidf_diagnoses:

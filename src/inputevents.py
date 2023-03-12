@@ -1,6 +1,6 @@
 from typing import Union
 
-from base_comparator import BaseComparator
+from base_comparators import BaseComparator
 from db import PostgresDB
 from schemas import InputEvent
 

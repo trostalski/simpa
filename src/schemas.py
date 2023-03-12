@@ -1,6 +1,11 @@
-from typing import Optional
+from typing import Optional, Union
 from pydantic import BaseModel, validator
 from datetime import datetime
+
+
+class DistributionCategory(BaseModel):
+    id: Union[int, str]
+    value: Optional[float]
 
 
 class Demographics(BaseModel):
@@ -11,33 +16,17 @@ class Demographics(BaseModel):
     height: Optional[float]
 
 
-class LabEvent(BaseModel):
-    labevent_id: int
+class LabEvent(DistributionCategory):
     item_id: int
     subject_id: int
     hadm_id: Optional[int]
-    specimen_id: Optional[int]
-    charttime: Optional[datetime]
-    value: Optional[str]
-    valuenum: Optional[float]
     valueuom: Optional[str]
-    ref_range_lower: Optional[float]
-    ref_range_upper: Optional[float]
-    flag: Optional[str]
-    priority: Optional[str]
-    comments: Optional[str]
-    label: Optional[str]
-    fluid: Optional[str]
-    category: Optional[str]
 
 
-class Vitalsign(BaseModel):
-    """Mean values over the entire patient stay"""
-
+class Vitalsign(DistributionCategory):
     subject_id: int
     hadm_id: int
     name: str
-    value: Optional[float]
 
 
 class InputEvent(BaseModel):
