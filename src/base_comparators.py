@@ -30,6 +30,15 @@ def value_is_valid(value: str) -> bool:
     return result
 
 
+def items_have_mean_and_std(a: DistributionCategory, b: DistributionCategory):
+    return (
+        a.id_mean is not None
+        and a.id_std_dev is not None
+        and b.id_mean is not None
+        and b.id_std_dev is not None
+    )
+
+
 class DistributionComparator(BaseComparator):
     def __init__(self, db: PostgresDB):
         self.db = db
@@ -43,7 +52,6 @@ class DistributionComparator(BaseComparator):
         self,
         a: DistributionCategory,
         b: DistributionCategory,
-        category: str,
         scale_by_distribution: bool = True,
     ):
         if a.hadm_id == b.hadm_id:
@@ -56,14 +64,11 @@ class DistributionComparator(BaseComparator):
             return None
         elif not value_is_valid(b.value):
             return None
-
-        if category == "labevents":
-            mean, std = self.db.get_labevent_mean_std_for_itemid(a.id)
-        elif category == "vitalsigns":
-            mean, std = self.db.get_vitalsign_mean_std_for_name(a.id)
-
-        if mean is None or std is None:
+        if a.id_mean is None or a.id_std_dev is None:
             return None
+
+        mean = float(a.id_mean)
+        std = float(a.id_std_dev)
 
         value_a = float(a.value)
         value_b = float(b.value)
@@ -85,7 +90,6 @@ class DistributionComparator(BaseComparator):
         set_a: list[DistributionCategory],
         set_b: list[DistributionCategory],
         scale_by_distribution: bool,
-        category: str,
         aggregation: str = "mean",
     ) -> float:
         similarities = []
@@ -95,7 +99,6 @@ class DistributionComparator(BaseComparator):
                     similarity = self._compare_pair(
                         a=a,
                         b=b,
-                        category=category,
                         scale_by_distribution=scale_by_distribution,
                     )
                     if similarity is not None:

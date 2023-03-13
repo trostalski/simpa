@@ -2,6 +2,20 @@ import psycopg2
 
 from schemas import Demographics, ICDDiagnosis, LabEvent, Vitalsign, InputEvent
 
+VITALSign_STATISTICS = {
+    "heart_rate": {"mean": 86.23006544257588, "std": 18.364919551828184},
+    "sbp": {"mean": 119.55375842307342, "std": 18.364919551828184},
+    "dbp": {"mean": 62.74514989155536, "std": 18.364919551828184},
+    "mbp": {"mean": 78.72341439390176, "std": 18.364919551828184},
+    "sbp_ni": {"mean": 119.70233195360974, "std": 22.228975865183298},
+    "dbp_ni": {"mean": 64.95822761647382, "std": 15.789699072474713},
+    "mbp_ni": {"mean": 78.45314922472335, "std": 15.916864499184568},
+    "resp_rate": {"mean": 20.112680079313726, "std": 5.8645482996371205},
+    "temperature": {"mean": 36.95860056154703, "std": 0.7049866294930923},
+    "spo2": {"mean": 96.75828969532087, "std": 3.348053473737268},
+    "glucose": {"mean": 148.22641204002312, "std": 62.023916929276474},
+}
+
 
 class PostgresDB:
     def __init__(self, db_name, host="localhost", port=5432, user=None, password=None):
@@ -88,6 +102,8 @@ class PostgresDB:
             subject_id = values[0]
             hadm_id = values[1]
             for name, value in zip(vital_sign_names, values[2:]):
+                mean = VITALSign_STATISTICS[name]["mean"]
+                std_dev = VITALSign_STATISTICS[name]["std"]
                 result.append(
                     Vitalsign(
                         id=name,
@@ -95,16 +111,19 @@ class PostgresDB:
                         hadm_id=hadm_id,
                         name=name,
                         value=value,
+                        id_mean=mean,
+                        id_std_dev=std_dev,
                     )
                 )
         return result
 
     def get_mean_labevents(self, hadm_ids: list[int]):
         result = []
-        query = """SELECT itemid, subject_id, hadm_id, AVG(valuenum), valueuom
-                FROM mimiciv_hosp.labevents
-                WHERE hadm_id = ANY(%s)
-                GROUP BY itemid, hadm_id, subject_id, valueuom;
+        query = """SELECT le.itemid, le.subject_id, le.hadm_id, AVG(le.valuenum), le.valueuom,
+                ls.mean_value, ls.std_dev
+                FROM mimiciv_hosp.labevents le, labevent_statistics ls
+                WHERE le.hadm_id = ANY(%s) AND le.itemid = ls.itemid
+                GROUP BY le.itemid, le.hadm_id, le.subject_id, le.valueuom, ls.mean_value, ls.std_dev;
                 """
         db_result = self.execute_query(query, (hadm_ids,))
         for (
@@ -113,6 +132,8 @@ class PostgresDB:
             hadm_id,
             valuenum,
             valueuom,
+            mean_value,
+            std_dev,
         ) in db_result:
             result.append(
                 LabEvent(
@@ -122,6 +143,8 @@ class PostgresDB:
                     hadm_id=hadm_id,
                     value=valuenum,
                     valueuom=valueuom,
+                    id_mean=mean_value,
+                    id_std_dev=std_dev,
                 )
             )
         return result

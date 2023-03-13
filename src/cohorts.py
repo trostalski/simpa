@@ -1,5 +1,7 @@
+import time
 from typing import Optional
 import math
+import logging
 
 from helper import scale_to_range
 from db import PostgresDB
@@ -18,6 +20,8 @@ from schemas import (
     InputEvent,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def get_count_of_encounters_with_diagnosis(
     input_code: str, all_encounters: tuple[SimilarityEncounter]
@@ -34,19 +38,22 @@ class Cohort:
         self,
         db: PostgresDB,
         participants: Optional[list[Proband]] = None,
+        name: Optional[str] = None,
     ):
         self.participants = participants if participants else []
         self.db = db
+        if name:
+            self.name = name
         if len(self.participants) > 0:
             self._get_endpoints_for_participants()
 
     @classmethod
-    def from_query(cls, query: str, db: PostgresDB):
+    def from_query(cls, query: str, db: PostgresDB, name: str = None):
         probands = []
         db_result = db.execute_query(query)
         for subject_id, hadm_id in db_result:
             probands.append(Proband(subject_id=subject_id, hadm_id=hadm_id))
-        cohort = cls(participants=probands, db=db)
+        cohort = cls(participants=probands, db=db, name=name)
         return cohort
 
     def initialize_data(self, with_tfidf_diagnoses: bool = False):
@@ -304,7 +311,7 @@ class Cohort:
             self.participants.append(Proband(subject_id=subject_id, hadm_id=hadm_id))
         self._get_endpoints_for_participants()
 
-    def remove_encounter_with_missing_category(self):
+    def remove_encounter_with_missing_data(self):
         result = []
         for encounter in self.similarity_encounters:
             valid = True
@@ -348,27 +355,32 @@ class EncounterComparator:
         aggregate_method: str = None,
         scale_by_distribution: bool = True,
     ) -> dict:
+        start_time = time.time()
         demographics_sim = self._compare_demographics(
             demographics_a=encounter_a.demographics,
             demographics_b=encounter_b.demographics,
         )
+        # print(f"compared demographics in {time.time() - start_time} seconds")
         # print("compared demographics")
         diagnoses_sim = self._compare_diagnoses(
             diagnoses_a=encounter_a.diagnoses,
             diagnoses_b=encounter_b.diagnoses,
         )
+        # print(f"compared diagnoses in {time.time() - start_time} seconds")
         # print("compared diagnoses")
         labevents_sim = self._compare_labevents(
             labevents_a=encounter_a.labevents,
             labevents_b=encounter_b.labevents,
             scale_by_distribution=scale_by_distribution,
         )
+        # print(f"compared labevents in {time.time() - start_time} seconds")
         # print("compared labevents")
         vitalsign_sim = self._compare_vitalsigns(
             vitalsigns_a=encounter_a.vitalsigns,
             vitalsigns_b=encounter_b.vitalsigns,
             scale_by_distribution=scale_by_distribution,
         )
+        # print(f"compared vitalsigns in {time.time() - start_time} seconds")
         # print("compared vitalsigns")
         inputevents_sim = self._compare_inputevents(
             inputevents_a=encounter_a.inputevents, inputevents_b=encounter_b.inputevents
@@ -406,6 +418,7 @@ class EncounterComparator:
             )
         else:
             raise ValueError(f"Unknown aggregate method {aggregate_method}")
+        # print(f"compared encounters in {time.time() - start_time} seconds")
         return result
 
     def _compare_demographics(

@@ -19,5 +19,4 @@ class LabEventComparator(DistributionComparator):
             labevent_a,
             labevent_b,
             scale_by_distribution=scale_by_distribution,
-            category="labevents",
         )

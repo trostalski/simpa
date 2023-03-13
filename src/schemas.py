@@ -6,6 +6,8 @@ from datetime import datetime
 class DistributionCategory(BaseModel):
     id: Union[int, str]
     value: Optional[float]
+    id_mean: Optional[float]
+    id_std_dev: Optional[float]
 
 
 class BinaryCategory(BaseModel):

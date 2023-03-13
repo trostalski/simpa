@@ -19,5 +19,4 @@ class VitalsignComparator(DistributionComparator):
             vitalsign_a,
             vitalsign_b,
             scale_by_distribution=scale_by_distribution,
-            category="vitalsigns",
         )
