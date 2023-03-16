@@ -40,8 +40,8 @@ def items_have_mean_and_std(a: DistributionCategory, b: DistributionCategory):
 
 
 class DistributionComparator(BaseComparator):
-    def __init__(self, db: PostgresDB):
-        self.db = db
+    def __init__(self):
+        pass
 
     def compare(
         self, a: DistributionCategory, b: DistributionCategory, *args, **kwargs

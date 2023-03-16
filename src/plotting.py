@@ -1,5 +1,7 @@
 import pandas as pd
 import itertools
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 
 def create_encounter_table(encounters):
@@ -131,3 +133,45 @@ def display_encounter_similarities(encounters):
             print("No common vitalsigns")
 
         print()  # Blank line to separate encounters
+
+
+# plot the los_hosp and los_icu for each cluster in a different scatterplot
+def plot_endpoint_for_cluster(
+    participants, cluster, endpoint, x_axis="cluster", hue="cluster", ax=None
+):
+    y_axis = endpoint
+    data = pd.DataFrame(
+        {
+            x_axis: cluster.labels_,
+            y_axis: [getattr(e, endpoint) for e in participants],
+            hue: cluster.labels_,
+        }
+    )
+    if ax is None:
+        sns.scatterplot(x=x_axis, y=y_axis, hue=hue, data=data, palette="Set1")
+    else:
+        sns.scatterplot(x=x_axis, y=y_axis, hue=hue, data=data, palette="Set1", ax=ax)
+
+
+def plot_endpoints_for_clusters(participants, clusters):
+    endpoints = ["los_hosp", "los_icu"]
+
+    # Create a figure with two subplots
+    fig, axes = plt.subplots(
+        nrows=len(clusters), ncols=len(endpoints), figsize=(16, 32)
+    )
+
+    for col, cluster in enumerate(clusters):
+        for row, endpoint in enumerate(endpoints):
+            plot_endpoint_for_cluster(
+                participants,
+                cluster,
+                endpoint,
+                x_axis="cluster",
+                hue="cluster",
+                ax=axes[col][row],
+            )
+            axes[col][row].set_title(cluster.__class__.__name__)
+            axes[col][row].set_xlabel("Cluster")
+            axes[col][row].set_ylabel(endpoint)
+            axes[col][row].legend().remove()

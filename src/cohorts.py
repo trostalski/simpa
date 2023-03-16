@@ -58,16 +58,25 @@ class Cohort:
 
     def initialize_data(self, with_tfidf_diagnoses: bool = False):
         """Initialize data for the cohort."""
+        start_time = time.time()
         self.demographics = self.db.get_patient_demographics(self.subject_ids)
+        print(f"Demographics: {time.time() - start_time}")
         self.diagnoses = self.db.get_icd_diagnoses(self.hadm_ids)
+        print(f"Diagnoses: {time.time() - start_time}")
         labevents = self.db.get_mean_labevents(self.hadm_ids)
+        print(f"Labevents: {time.time() - start_time}")
         self.labevents = [l for l in labevents if l.value is not None]
+        print(f"Labevents: {time.time() - start_time}")
         self.vitalsigns = self.db.get_mean_vitalsigns(self.hadm_ids)
+        print(f"Vitalsigns: {time.time() - start_time}")
         self.inputevents = self.db.get_inputevents(self.hadm_ids)
+        print(f"Inputevents: {time.time() - start_time}")
         self.similarity_encounters = self._create_similarity_encounters()
+        print(f"Similarity encounters: {time.time() - start_time}")
         if with_tfidf_diagnoses:
             self.encounter_with_code_cache = {}
             self._get_tfidf_scores_for_encounters()
+        print(f"TFIDF: {time.time() - start_time}")
 
     def compare_encounters(
         self,
@@ -441,7 +450,7 @@ class EncounterComparator:
         labevents_b: list[LabEvent],
         scale_by_distribution: bool,
     ) -> float:
-        comparator = LabEventComparator(db=self.db)
+        comparator = LabEventComparator()
         return comparator.compare(
             labevents_a, labevents_b, scale_by_distribution=scale_by_distribution
         )
@@ -452,7 +461,7 @@ class EncounterComparator:
         vitalsigns_b: list[Vitalsign],
         scale_by_distribution: bool,
     ) -> float:
-        comparator = VitalsignComparator(db=self.db)
+        comparator = VitalsignComparator()
         return comparator.compare(
             vitalsigns_a, vitalsigns_b, scale_by_distribution=scale_by_distribution
         )
@@ -460,5 +469,5 @@ class EncounterComparator:
     def _compare_inputevents(
         self, inputevents_a: list[InputEvent], inputevents_b: list[InputEvent]
     ) -> float:
-        comparator = InputEventComparator(db=self.db)
+        comparator = InputEventComparator()
         return comparator.compare(inputevents_a, inputevents_b)

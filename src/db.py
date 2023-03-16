@@ -193,6 +193,24 @@ class PostgresDB:
             )
         return result
 
+    # Get from similarity tables
+    def get_all_similarity_values(self):
+        query = """
+            SELECT d.hadm_id_a, d.hadm_id_b, d.raw_similarity_value AS demographics_similarity, 
+            i.raw_similarity_value AS icd_diagnoses_similarity, 
+            l.raw_similarity_value AS labevents_similarity, 
+            v.raw_similarity_value AS vitalsigns_similarity, 
+            e.raw_similarity_value AS inputevents_similarity
+            FROM demographics_similarity d
+            INNER JOIN icd_diagnoses_similarity i ON d.hadm_id_a = i.hadm_id_a AND d.hadm_id_b = i.hadm_id_b
+            INNER JOIN labevents_similarity l ON d.hadm_id_a = l.hadm_id_a AND d.hadm_id_b = l.hadm_id_b
+            INNER JOIN vitalsigns_similarity v ON d.hadm_id_a = v.hadm_id_a AND d.hadm_id_b = v.hadm_id_b
+            INNER JOIN inputevents_similarity e ON d.hadm_id_a = e.hadm_id_a AND d.hadm_id_b = e.hadm_id_b;
+
+            """
+        db_result = self.execute_query(query)
+        return db_result
+
     # Get statistics
     def get_labevent_mean_std_for_itemid(self, itemid: int):
         query = """

@@ -6,8 +6,8 @@ from base_comparators import DistributionComparator
 
 
 class VitalsignComparator(DistributionComparator):
-    def __init__(self, db: PostgresDB):
-        super().__init__(db=db)
+    def __init__(self):
+        super().__init__()
 
     def compare(
         self,

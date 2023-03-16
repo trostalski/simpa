@@ -58,8 +58,8 @@ class ICDDiagnosis(BaseModel):
 
 
 class Proband(BaseModel):
-    subject_id: int
     hadm_id: int
+    subject_id: Optional[int]
     los_icu: Optional[float]
     los_hosp: Optional[float]
 

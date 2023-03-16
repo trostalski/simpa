@@ -6,7 +6,7 @@ from schemas import InputEvent
 
 
 class InputEventComparator(BinaryComparator):
-    def __init__(self, db: PostgresDB):
+    def __init__(self):
         pass
 
     def compare(
