@@ -124,8 +124,8 @@ class BinaryComparator(BaseComparator):
         return int(a.value == b.value)
 
     def _compare_set(self, set_a, set_b):
-        set_a = set([i.item_id for i in set_a])
-        set_b = set([i.item_id for i in set_b])
+        set_a = set([i.itemid for i in set_a])
+        set_b = set([i.itemid for i in set_b])
         intersection = set_a.intersection(set_b)
         union = set_a.union(set_b)
         return len(intersection) / len(union)

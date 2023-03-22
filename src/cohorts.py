@@ -28,7 +28,7 @@ def get_count_of_encounters_with_diagnosis(
 ) -> int:
     counter = 0
     for encounter in all_encounters:
-        if input_code in [d.code for d in encounter.diagnoses]:
+        if input_code in [d.icd_code for d in encounter.diagnoses]:
             counter += 1
     return counter
 
@@ -59,24 +59,24 @@ class Cohort:
     def initialize_data(self, with_tfidf_diagnoses: bool = False):
         """Initialize data for the cohort."""
         start_time = time.time()
-        self.demographics = self.db.get_patient_demographics(self.subject_ids)
-        print(f"Demographics: {time.time() - start_time}")
+        self.demographics = self.db.get_patient_demographics(self.hadm_ids)
+        # print(f"Demographics: {time.time() - start_time}")
         self.diagnoses = self.db.get_icd_diagnoses(self.hadm_ids)
-        print(f"Diagnoses: {time.time() - start_time}")
+        # print(f"Diagnoses: {time.time() - start_time}")
         labevents = self.db.get_mean_labevents(self.hadm_ids)
-        print(f"Labevents: {time.time() - start_time}")
+        # print(f"Labevents: {time.time() - start_time}")
         self.labevents = [l for l in labevents if l.value is not None]
-        print(f"Labevents: {time.time() - start_time}")
+        # print(f"Labevents: {time.time() - start_time}")
         self.vitalsigns = self.db.get_mean_vitalsigns(self.hadm_ids)
-        print(f"Vitalsigns: {time.time() - start_time}")
+        # print(f"Vitalsigns: {time.time() - start_time}")
         self.inputevents = self.db.get_inputevents(self.hadm_ids)
-        print(f"Inputevents: {time.time() - start_time}")
+        # print(f"Inputevents: {time.time() - start_time}")
         self.similarity_encounters = self._create_similarity_encounters()
-        print(f"Similarity encounters: {time.time() - start_time}")
+        # print(f"Similarity encounters: {time.time() - start_time}")
         if with_tfidf_diagnoses:
             self.encounter_with_code_cache = {}
             self._get_tfidf_scores_for_encounters()
-        print(f"TFIDF: {time.time() - start_time}")
+        # print(f"TFIDF: {time.time() - start_time}")
 
     def compare_encounters(
         self,
@@ -179,11 +179,10 @@ class Cohort:
             vitalsigns = [v for v in self.vitalsigns if v.hadm_id == patient.hadm_id]
             inputevents = [i for i in self.inputevents if i.hadm_id == patient.hadm_id]
             for d in self.demographics:
-                if d.subject_id == patient.subject_id:
+                if d.hadm_id == patient.hadm_id:
                     demo = d
             result.append(
                 SimilarityEncounter(
-                    subject_id=patient.subject_id,
                     hadm_id=patient.hadm_id,
                     diagnoses=diagnoses,
                     demographics=demo,
@@ -271,35 +270,61 @@ class Cohort:
         encounter_diagnoses = [d for d in encounter.diagnoses]
         encounter_diagnoses_count = len(encounter_diagnoses)
         encounter_code_count = len(
-            [d for d in encounter_diagnoses if d.code == input_diagnosis.code]
+            [d for d in encounter_diagnoses if d.icd_code == input_diagnosis.icd_code]
         )
         tf = encounter_code_count / encounter_diagnoses_count
 
         total_encounters_count = len(self.similarity_encounters)
 
-        if input_diagnosis.code in self.encounter_with_code_cache:
+        if input_diagnosis.icd_code in self.encounter_with_code_cache:
             encounter_with_code_count = self.encounter_with_code_cache[
-                input_diagnosis.code
+                input_diagnosis.icd_code
             ]
         else:
             encounter_with_code_count = get_count_of_encounters_with_diagnosis(
-                input_code=input_diagnosis.code,
+                input_code=input_diagnosis.icd_code,
                 all_encounters=self.similarity_encounters,
             )
             self.encounter_with_code_cache[
-                input_diagnosis.code
+                input_diagnosis.icd_code
             ] = encounter_diagnoses_count
 
         idf = math.log(total_encounters_count / encounter_with_code_count)
         return tf * idf
 
-    def get_sepsis_cohort(self, size: int = 100):
+    def get_sepsis_cohort(
+        self, limit: int = 100, min_age: int = 18, max_age: int = 65, gender: str = "M"
+    ):
         query = """
-            SELECT sep.subject_id, sep.stay_id, sta.hadm_id
-            FROM mimiciv_derived.sepsis3 sep, mimiciv_icu.icustays sta
-            WHERE sep.stay_id = sta.stay_id limit %s;
+            SELECT 
+                sep.subject_id, 
+                sep.stay_id, 
+                sta.hadm_id 
+            FROM 
+                mimiciv_derived.sepsis3 sep, 
+                mimiciv_icu.icustays sta, 
+                mimiciv_derived.age a, 
+                mimiciv_hosp.patients p 
+            WHERE 
+                sep.stay_id = sta.stay_id 
+                AND sta.hadm_id = a.hadm_id 
+                AND p.subject_id = sta.subject_id 
+                AND a.age >= %s
+                AND a.age <= %s 
+                AND p.gender = %s
         """
-        db_result = self.db.execute_query(query, (size,))
+        if limit:
+            query += "LIMIT %s"
+
+        db_result = self.db.execute_query(
+            query,
+            (
+                min_age,
+                max_age,
+                gender,
+                limit,
+            ),
+        )
         for subject_id, stay_id, hadm_id in db_result:
             self.participants.append(
                 Proband(subject_id=subject_id, stay_id=stay_id, hadm_id=hadm_id)

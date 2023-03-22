@@ -4,15 +4,27 @@ import requests
 from pydantic import BaseModel
 from base_comparators import BaseComparator
 from dotenv import load_dotenv
+from nxontology import NXOntology
+import networkx as nx
 
 from schemas import ICDDiagnosis
+from schemas import SimilarityNode
 
 load_dotenv()
 
 
+def load_icd10_graph(path: str = "src/graphs/icd10_nx.gpickle"):
+    G_default = nx.read_gpickle(path)
+    G = NXOntology(G_default)
+    G.freeze()
+    print("Loaded ICD10 graph")
+    return G
+
+
 class ICDComparator(BaseComparator):
-    def __init__(self):
-        pass
+    def __init__(self, G: Optional[NXOntology] = None):
+        if not G:
+            self.G = load_icd10_graph()
 
     def compare(
         self,
@@ -28,61 +40,93 @@ class ICDComparator(BaseComparator):
         self,
         diagnoses_a: ICDDiagnosis,
         diagnoses_b: ICDDiagnosis,
-        cs_metric: str = None,
         ic_metric: str = None,
     ) -> float:
-        terminology_base = os.getenv("TERMINOLOGY_SERVER")
-
-        if not terminology_base:
-            raise ValueError("No terminology server found.")
-
-        code_a = diagnoses_a.code
-        code_b = diagnoses_b.code
-
-        if not code_a or not code_b:
-            raise ValueError("No code found.")
-
-        code_similarity_endpoint = "/icd10/similarity/pair"
-
-        response = requests.post(
-            terminology_base + code_similarity_endpoint,
-            json={
-                "node_a": {"code": code_a, "weight": diagnoses_a.tfidf_score},
-                "node_b": {"code": code_b, "weight": diagnoses_b.tfidf_score},
-            },
+        similarity = self.get_node_similariy(
+            diagnoses_a, diagnoses_b, ic_metric=ic_metric
         )
-        response.raise_for_status()
-        similarity = response.json()["similarity"]
         return similarity
 
     def _compare_set(
         self,
         diagnoses_set_a: list[ICDDiagnosis],
         diagnoses_set_b: list[ICDDiagnosis],
+        ic_metric: str = "intrinsic_ic_sanchez",
+        cs_metric: str = "lin",
     ) -> Union[float, bool]:
-        nodes_a = []
-        nodes_b = []
-
-        for diagnosis in diagnoses_set_a:
-            if diagnosis.code is None:
-                continue
-            nodes_a.append({"code": diagnosis.code, "weight": diagnosis.tfidf_score})
-        for diagnosis in diagnoses_set_b:
-            if diagnosis.code is None:
-                continue
-            nodes_b.append({"code": diagnosis.code, "weight": diagnosis.tfidf_score})
-
-        terminology_base = os.getenv("TERMINOLOGY_SERVER")
-        set_similarity_endpoint = "/icd10/similarity/set"
-
-        response = requests.post(
-            terminology_base + set_similarity_endpoint,
-            json={
-                "nodes_a": nodes_a,
-                "nodes_b": nodes_b,
-            },
+        similarity = self.get_node_set_similarity(
+            diagnoses_set_a, diagnoses_set_b, ic_metric=ic_metric, cs_metric=cs_metric
         )
-
-        response.raise_for_status()
-        similarity = response.json()["similarity"]
         return similarity
+
+    def get_node_set_similarity(
+        self,
+        nodes_a: list[SimilarityNode],
+        nodes_b: list[SimilarityNode],
+        ic_metric: str,
+        cs_metric: str,
+        method="jia",
+    ):
+        if method == "jia":
+            result = self.node_set_similarity_jia(
+                diagnoses_a=nodes_a,
+                diagnoses_b=nodes_b,
+                ic_metric=ic_metric,
+                cs_metric=cs_metric,
+            )
+        return result
+
+    def get_node_similariy(
+        self,
+        diagnosis_a: ICDDiagnosis,
+        diagnosis_b: ICDDiagnosis,
+        ic_metric: str,
+    ):
+        similarity = self.G.similarity(
+            node_0=diagnosis_a.icd_code,
+            node_1=diagnosis_b.icd_code,
+            ic_metric=ic_metric,
+        )
+        return similarity.results()
+
+    def node_set_similarity_jia(
+        self,
+        diagnoses_a: list[ICDDiagnosis],
+        diagnoses_b: list[ICDDiagnosis],
+        cs_metric: str = "lin",
+        ic_metric: str = "intrinsic_ic_sanchez",
+    ):
+        """Derived from https://bmcmedinformdecismak.biomedcentral.com/articles/10.1186/s12911-019-0807-y"""
+        lhs = 0
+        rhs = 0
+        node_sim_ba = []
+        node_sim_ab = []
+
+        for diagnosis_a in diagnoses_a:
+            code_a = diagnosis_a.icd_code
+            node_sim_ab = []
+            for diagnosis_b in diagnoses_b:
+                code_b = diagnosis_b.icd_code
+                similarity = self.G.similarity(code_a, code_b, ic_metric)
+                similarity = getattr(similarity, cs_metric)
+                similarity *= (diagnosis_a.tfidf_score + diagnosis_b.tfidf_score) / 2
+                node_sim_ab.append(similarity)
+            lhs += max(node_sim_ab, default=0)
+
+        for diagnosis_b in diagnoses_b:
+            code_b = diagnosis_b.icd_code
+            node_sim_ba = []
+            for diagnosis_a in diagnoses_a:
+                code_a = diagnosis_a.icd_code
+                similarity = self.G.similarity(code_b, code_a, ic_metric)
+                similarity = getattr(similarity, cs_metric)
+                similarity *= (diagnosis_a.tfidf_score + diagnosis_b.tfidf_score) / 2
+                node_sim_ba.append(similarity)
+            rhs += max(node_sim_ba, default=0)
+
+        if len(node_sim_ab) == 0 or len(node_sim_ba) == 0:
+            return 0
+
+        factor = 1 / (len(node_sim_ab) + len(node_sim_ba))
+        result = factor * (lhs + rhs)
+        return result

@@ -20,3 +20,6 @@ CREATE INDEX IF NOT EXISTS idx_inputevents_hadm_id ON mimiciv_icu.inputevents (h
 
 CREATE INDEX IF NOT EXISTS idx_icustays_hadm_id ON mimiciv_icu.icustays (hadm_id);
 
+CREATE INDEX IF NOT EXISTS idx_icustays_stay_id ON mimiciv_icu.icustays (stay_id);
+
+CREATE INDEX IF NOT EXISTS idx_sepsis3_stay_id ON mimiciv_derived.sepsis3 (stay_id);
