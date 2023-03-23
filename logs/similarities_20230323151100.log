@@ -1,0 +1,5 @@
+15:11:00,395 asyncio DEBUG Using selector: EpollSelector
+15:11:00,396 __main__ INFO Started similarity import for table similarities_20230323151100.
+15:11:00,417 __main__ INFO Connected to databases, starting to download categories.
+15:11:00,570 __main__ INFO Finished downloading hadm_ids for cohort from db.
+15:11:01,45 __main__ INFO Finished downloading demographics for cohort from db.

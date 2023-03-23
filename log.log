@@ -71,3 +71,18 @@
 18:41:51,275 asyncio DEBUG Using selector: KqueueSelector
 18:41:52,374 __main__ INFO Cleaned 2 bad diagnoses records, 200 good diagnoses records
 18:41:55,167 __main__ INFO Async time: 3.891317844390869
+14:40:47,240 asyncio DEBUG Using selector: EpollSelector
+14:41:24,910 asyncio DEBUG Using selector: EpollSelector
+14:42:10,989 asyncio DEBUG Using selector: EpollSelector
+14:45:45,382 asyncio DEBUG Using selector: EpollSelector
+14:45:51,812 asyncio DEBUG Using selector: EpollSelector
+14:46:24,199 asyncio DEBUG Using selector: EpollSelector
+14:55:36,43 asyncio DEBUG Using selector: EpollSelector
+14:55:40,494 __main__ INFO Cleaned 4 bad diagnoses records, 199 good diagnoses records
+14:57:00,820 asyncio DEBUG Using selector: EpollSelector
+14:57:04,22 __main__ INFO Cleaned 4 bad diagnoses records, 199 good diagnoses records
+14:57:25,945 asyncio DEBUG Using selector: EpollSelector
+14:57:29,761 __main__ INFO Cleaned 4 bad diagnoses records, 199 good diagnoses records
+14:57:52,215 asyncio DEBUG Using selector: EpollSelector
+14:57:55,506 __main__ INFO Cleaned 4 bad diagnoses records, 199 good diagnoses records
+14:57:58,590 __main__ INFO Async time: 6.375313758850098

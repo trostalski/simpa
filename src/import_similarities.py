@@ -32,7 +32,7 @@ from icd_diagnoses import load_icd10_graph
 ########## PARAMETERS ##########
 MIN_AGE = 18
 MAX_AGE = 100
-LIMIT = 10
+LIMIT = "NULL"
 GENDER = "M"
 
 ICD_MAP_PATH = "src/sql/icd9_to_icd10_map.json"
@@ -48,10 +48,8 @@ inputevent_comp = InputEventComparator()
 vitalsign_comp = VitalsignComparator()
 
 
-async def insert_similarities(conn: Connection, similarites):
+async def insert_similarities(conn: Connection, similarites, table_name: str):
     """Insert similarities into database."""
-    table_name = datetime.now().strftime("%Y%m%d%H%M%S") + "similarities"
-    print(table_name)
     insert_list = [
         (
             s["encounter_a"],
@@ -77,9 +75,9 @@ async def insert_similarities(conn: Connection, similarites):
                 PRIMARY KEY (hadm_id_a, hadm_id_b)
             );
 
-            CREATE INDEX IF NOT EXISTS similarity_hadm_id_a ON similarities (hadm_id_a);
+            CREATE INDEX IF NOT EXISTS similarity_hadm_id_a ON {table_name} (hadm_id_a);
 
-            CREATE INDEX IF NOT EXISTS similarity_hadm_id_b ON similarities (hadm_id_b);
+            CREATE INDEX IF NOT EXISTS similarity_hadm_id_b ON {table_name} (hadm_id_b);
         """
     )
     await conn.executemany(
@@ -145,6 +143,7 @@ def normalize_categories(result: list[dict]) -> list[dict]:
 
 
 def clean_diagnoses_records(diagnoses):
+    logger.info("Cleaning diagnoses.")
     result = []
     G = load_icd10_graph()
     good_c = 0
@@ -208,30 +207,39 @@ def compare_encounters(encounter_pair: tuple[SimilarityEncounter, SimilarityEnco
     }
 
 
-async def main():
+async def main(table_name: str):
+    logger.info(f"Started similarity import for table {table_name}.")
     conn = await asyncpg.connect(
-        f"postgresql://{os.getenv('DB_USER')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+        f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
     )
+
+    logger.info("Connected to databases, starting to download categories.")
 
     hadm_ids = await conn.fetch(
         psycop_to_asyncpg_string(sq.sepsis_cohort), MIN_AGE, MAX_AGE, GENDER, LIMIT
     )
+    logger.info("Finished downloading hadm_ids for cohort from db.")
     demographics_records = await conn.fetch(
         psycop_to_asyncpg_string(sq.get_demographics), hadm_ids
     )
+    logger.info("Finished downloading demographics for cohort from db.")
     diagnoses_records = await conn.fetch(
         psycop_to_asyncpg_string(sq.get_icd_diagnoses), hadm_ids
     )
+    logger.info("Finished downloading diagnoses for cohort from db.")
     labevents_records = await conn.fetch(
         psycop_to_asyncpg_string(sq.get_mean_labevents), hadm_ids
     )
+    logger.info("Finished downloading labevents for cohort from db.")
     vitalsigns_records = await conn.fetch(
         psycop_to_asyncpg_string(sq.get_mean_vitalsigns), hadm_ids
     )
     inputevents_records = await conn.fetch(
         psycop_to_asyncpg_string(sq.get_inputevents), hadm_ids
     )
+    logger.info("Finished downloading inputevents for cohort from db.")
 
+    logger.info("Starting to build similarity encounter for hadm_ids.")
     hadm_data = {}
 
     for i in demographics_records:
@@ -324,6 +332,7 @@ async def main():
     for k, v in hadm_data.items():
         encounters.append(SimilarityEncounter(hadm_id=k, **v))
 
+    logger.info("Finished building similarity encounters.")
     with Pool() as pool:
         encounter_pairs = []
         for encounter_a in encounters:
@@ -336,23 +345,34 @@ async def main():
                     and pair not in encounter_pairs
                 ):
                     encounter_pairs.append(pair)
+        logger.info("Finished pairing encounter.")
+        logger.info(f"Total of {len(encounter_pairs)} created.")
+        logger.info("Starting multiprocesses to calculate similarities")
         result = pool.map(compare_encounters, encounter_pairs)
 
+    logger.info("Finished calculating similarities, staring to normalize.")
     result = normalize_categories(result)
+    logger.info("Finished normalizing.")
+    logger.info(f"Inserting a total of {len(result)} into database.")
 
-    await insert_similarities(conn=conn, similarites=result)
+    await insert_similarities(conn=conn, similarites=result, table_name=table_name)
+    logger.info(f"Finished insertion, closing database conncetion.")
     await conn.close()
 
 
 if __name__ == "__main__":
+    table_name = "similarities_" + datetime.now().strftime("%Y%m%d%H%M%S")
     logging.basicConfig(
-        filename="log.log",
+        filename=f"logs/{table_name}.log",
         filemode="a",
         format="%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s",
         datefmt="%H:%M:%S",
         level=logging.DEBUG,
     )
+
+    logger.info(f"PARAMETERS: MIN_AGE - {MIN_AGE}, MAX_AGE - {MAX_AGE}, GEDER - {GENDER}, LIMIT - {LIMIT}")
+
     start_time = time.time()
-    asyncio.run(main())
+    asyncio.run(main(table_name))
     async_time = time.time()
-    logger.info(f"Async time: {async_time - start_time}")
+    logger.info(f"Total time: {async_time - start_time}")
