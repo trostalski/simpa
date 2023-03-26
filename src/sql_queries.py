@@ -101,7 +101,7 @@ WHERE
 """
 
 sepsis_cohort = """
-SELECT 
+SELECT DISTINCT 
     sta.hadm_id 
 FROM 
     mimiciv_derived.sepsis3 sep, 

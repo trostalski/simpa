@@ -28,3 +28,4 @@ test.*
 debug.py
 old.py
 graphs/
+logs

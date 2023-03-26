@@ -10,14 +10,13 @@ import json
 from datetime import datetime
 
 import sql_queries as sq
-from helper import psycop_to_asyncpg_string
+from helper import batch, psycop_to_asyncpg_string
 from schemas import (
     Demographics,
     LabEvent,
     ICDDiagnosis,
     InputEvent,
     Vitalsign,
-    SimilarityEncounter,
 )
 from constants import VITAL_SIGN_NAMES, VITALSIGN_STATISTICS
 from labevents import LabEventComparator
@@ -26,14 +25,14 @@ from icd_diagnoses import ICDComparator
 from inputevents import InputEventComparator
 from helper import scale_to_range
 from vitalsigns import VitalsignComparator
-from nxontology import NXOntology
 from icd_diagnoses import load_icd10_graph
 
 ########## PARAMETERS ##########
 MIN_AGE = 18
-MAX_AGE = 100
-LIMIT = "NULL"
-GENDER = "M"
+MAX_AGE = 65
+LIMIT = None
+BATCH_SIZE = 400
+GENDER = "F"
 
 ICD_MAP_PATH = "src/sql/icd9_to_icd10_map.json"
 ################################
@@ -97,26 +96,36 @@ def normalize_categories(result: list[dict]) -> list[dict]:
         for r in result
         if r["encounter_a"] != r["encounter_b"]
     ]
+    demographics_sims = [0 if d is None else d for d in demographics_sims]
+
     diagnoses_sims = [
         r["similarity"]["diagnoses_sim"]
         for r in result
         if r["encounter_a"] != r["encounter_b"]
     ]
+    diagnoses_sims = [0 if d is None else d for d in diagnoses_sims]
+
     labevents_sims = [
         r["similarity"]["labevents_sim"]
         for r in result
         if r["encounter_a"] != r["encounter_b"]
     ]
+    labevents_sims = [0 if d is None else d for d in labevents_sims]
+
     vitalsigns_sims = [
         r["similarity"]["vitalsigns_sim"]
         for r in result
         if r["encounter_a"] != r["encounter_b"]
     ]
-    inputevents_sim = [
+    vitalsigns_sims = [0 if d is None else d for d in vitalsigns_sims]
+
+    inputevents_sims = [
         r["similarity"]["inputevents_sim"]
         for r in result
         if r["encounter_a"] != r["encounter_b"]
     ]
+    inputevents_sims = [0 if d is None else d for d in inputevents_sims]
+
     normalized_demographics_sims = scale_to_range(
         input_list=demographics_sims, range_start=0, range_end=1
     )
@@ -130,7 +139,7 @@ def normalize_categories(result: list[dict]) -> list[dict]:
         input_list=vitalsigns_sims, range_start=0, range_end=1
     )
     normalized_inputevents_sims = scale_to_range(
-        input_list=inputevents_sim, range_start=0, range_end=1
+        input_list=inputevents_sims, range_start=0, range_end=1
     )
 
     for i, r in enumerate([r for r in result if r["encounter_a"] != r["encounter_b"]]):
@@ -175,23 +184,36 @@ def clean_diagnoses_records(diagnoses):
     return result
 
 
-def compare_encounters(encounter_pair: tuple[SimilarityEncounter, SimilarityEncounter]):
+def compare_encounters(encounter_pair: tuple[dict, dict]):
     encounter_a = encounter_pair[0]
     encounter_b = encounter_pair[1]
+    lab_sim = None
+    demo_sim = None
+    icd_sim = None
+    vitalsign_sim = None
+    inputevent_sim = None
 
-    lab_sim = labevent_comp.compare(
-        encounter_a.labevents, encounter_b.labevents, scale_by_distribution=True
-    )
-    demo_sim = demographic_comp.compare(
-        encounter_a.demographics, encounter_b.demographics
-    )
-    icd_sim = icd_comp.compare(encounter_a.diagnoses, encounter_b.diagnoses)
-    inputevent_sim = inputevent_comp.compare(
-        encounter_a.inputevents, encounter_b.inputevents
-    )
-    vitalsign_sim = vitalsign_comp.compare(
-        encounter_a.vitalsigns, encounter_b.vitalsigns
-    )
+    if "labevents" in encounter_a and "labevents" in encounter_b:
+        lab_sim = labevent_comp.compare(
+            encounter_a["labevents"],
+            encounter_b["labevents"],
+            scale_by_distribution=True,
+        )
+    if "demographics" in encounter_a and "demographics" in encounter_b:
+        demo_sim = demographic_comp.compare(
+            encounter_a["demographics"], encounter_b["demographics"]
+        )
+    if "diagnoses" in encounter_a and "diagnoses" in encounter_b:
+        icd_sim = icd_comp.compare(encounter_a["diagnoses"], encounter_b["diagnoses"])
+    if "inputevents" in encounter_a and "inputevents" in encounter_b:
+        inputevent_sim = inputevent_comp.compare(
+            encounter_a["inputevents"], encounter_b["inputevents"]
+        )
+    if "vitalsigns" in encounter_a and "vitalsigns" in encounter_b:
+        vitalsign_sim = vitalsign_comp.compare(
+            encounter_a["vitalsigns"], encounter_b["vitalsigns"]
+        )
+
     sims = {
         "labevents_sim": lab_sim,
         "demographics_sim": demo_sim,
@@ -201,8 +223,8 @@ def compare_encounters(encounter_pair: tuple[SimilarityEncounter, SimilarityEnco
     }
 
     return {
-        "encounter_a": encounter_a.hadm_id,
-        "encounter_b": encounter_b.hadm_id,
+        "encounter_a": encounter_a["hadm_id"],
+        "encounter_b": encounter_b["hadm_id"],
         "similarity": sims,
     }
 
@@ -218,6 +240,7 @@ async def main(table_name: str):
     hadm_ids = await conn.fetch(
         psycop_to_asyncpg_string(sq.sepsis_cohort), MIN_AGE, MAX_AGE, GENDER, LIMIT
     )
+
     logger.info("Finished downloading hadm_ids for cohort from db.")
     demographics_records = await conn.fetch(
         psycop_to_asyncpg_string(sq.get_demographics), hadm_ids
@@ -240,11 +263,11 @@ async def main(table_name: str):
     logger.info("Finished downloading inputevents for cohort from db.")
 
     logger.info("Starting to build similarity encounter for hadm_ids.")
-    hadm_data = {}
+
+    hadm_ids = [i["hadm_id"] for i in hadm_ids]
+    hadm_data = {i: {"hadm_id": i} for i in hadm_ids}
 
     for i in demographics_records:
-        if i["hadm_id"] not in hadm_data:
-            hadm_data[i["hadm_id"]] = {}
         hadm_data[i["hadm_id"]]["demographics"] = Demographics(
             subject_id=i["subject_id"],
             hadm_id=i["hadm_id"],
@@ -257,8 +280,6 @@ async def main(table_name: str):
         diagnoses_records
     )  # turns the records into dicts and removes bad records
     for i in diagnoses_dicts:
-        if i["hadm_id"] not in hadm_data:
-            hadm_data[i["hadm_id"]] = {}
         if "diagnoses" not in hadm_data[i["hadm_id"]]:
             hadm_data[i["hadm_id"]]["diagnoses"] = []
         hadm_data[i["hadm_id"]]["diagnoses"].append(
@@ -272,8 +293,6 @@ async def main(table_name: str):
         )
 
     for i in labevents_records:
-        if i["hadm_id"] not in hadm_data:
-            hadm_data[i["hadm_id"]] = {}
         if "labevents" not in hadm_data[i["hadm_id"]]:
             hadm_data[i["hadm_id"]]["labevents"] = []
         hadm_data[i["hadm_id"]]["labevents"].append(
@@ -290,15 +309,13 @@ async def main(table_name: str):
         )
 
     for i in vitalsigns_records:
-        if i["hadm_id"] not in hadm_data:
-            hadm_data[i["hadm_id"]] = {}
         if "vitalsigns" not in hadm_data[i["hadm_id"]]:
             hadm_data[i["hadm_id"]]["vitalsigns"] = []
         subject_id = i[0]
         hadm_id = i[1]
         for name, value in zip(VITAL_SIGN_NAMES, i[2:]):
-            mean = VITALSIGN_STATISTICS[name]["mean"]
-            std_dev = VITALSIGN_STATISTICS[name]["std"]
+            id_mean = VITALSIGN_STATISTICS[name]["mean"]
+            id_std_dev = VITALSIGN_STATISTICS[name]["std"]
             hadm_data[i["hadm_id"]]["vitalsigns"].append(
                 Vitalsign(
                     id=name,
@@ -306,13 +323,11 @@ async def main(table_name: str):
                     hadm_id=hadm_id,
                     name=name,
                     value=value,
-                    id_mean=mean,
-                    id_std_dev=std_dev,
+                    id_mean=id_mean,
+                    id_std_dev=id_std_dev,
                 )
             )
     for i in inputevents_records:
-        if i["hadm_id"] not in hadm_data:
-            hadm_data[i["hadm_id"]] = {}
         if "inputevents" not in hadm_data[i["hadm_id"]]:
             hadm_data[i["hadm_id"]]["inputevents"] = []
         hadm_data[i["hadm_id"]]["inputevents"].append(
@@ -327,35 +342,33 @@ async def main(table_name: str):
             )
         )
 
-    encounters = []
-
-    for k, v in hadm_data.items():
-        encounters.append(SimilarityEncounter(hadm_id=k, **v))
-
     logger.info("Finished building similarity encounters.")
-    with Pool() as pool:
-        encounter_pairs = []
-        for encounter_a in encounters:
-            for encounter_b in encounters:
-                pair = tuple(
-                    sorted((encounter_a, encounter_b), key=lambda x: x.hadm_id)
+
+    encounter_pairs = []
+    n = len(hadm_ids)
+    batch_size = BATCH_SIZE
+    for idx, data_batch in enumerate(batch(list(range(n)), batch_size)):
+        for i in range(len(data_batch)):
+            i = i + idx * batch_size
+            hadm_id_i = hadm_ids[i]
+            for j in range(i + 1, n):
+                hadm_id_j = hadm_ids[j]
+                pair = (
+                    (hadm_data[hadm_id_i], hadm_data[hadm_id_j])
+                    if hadm_id_i < hadm_id_j
+                    else (hadm_data[hadm_id_j], hadm_data[hadm_id_i])
                 )
-                if (
-                    not encounter_a.hadm_id == encounter_b.hadm_id
-                    and pair not in encounter_pairs
-                ):
-                    encounter_pairs.append(pair)
-        logger.info("Finished pairing encounter.")
-        logger.info(f"Total of {len(encounter_pairs)} created.")
-        logger.info("Starting multiprocesses to calculate similarities")
-        result = pool.map(compare_encounters, encounter_pairs)
+                encounter_pairs.append(pair)
 
-    logger.info("Finished calculating similarities, staring to normalize.")
-    result = normalize_categories(result)
-    logger.info("Finished normalizing.")
-    logger.info(f"Inserting a total of {len(result)} into database.")
+        with Pool(6) as pool:
+            logger.info(f"Batch of {len(encounter_pairs)} created.")
+            logger.info("Starting multiprocesses to calculate similarities")
+            result = pool.map(compare_encounters, encounter_pairs)
+        logger.info(f"Inserting a batch of {len(result)} into database.")
 
-    await insert_similarities(conn=conn, similarites=result, table_name=table_name)
+        await insert_similarities(conn=conn, similarites=result, table_name=table_name)
+        encounter_pairs = []
+
     logger.info(f"Finished insertion, closing database conncetion.")
     await conn.close()
 
@@ -370,7 +383,9 @@ if __name__ == "__main__":
         level=logging.DEBUG,
     )
 
-    logger.info(f"PARAMETERS: MIN_AGE - {MIN_AGE}, MAX_AGE - {MAX_AGE}, GEDER - {GENDER}, LIMIT - {LIMIT}")
+    logger.info(
+        f"PARAMETERS: MIN_AGE - {MIN_AGE}, MAX_AGE - {MAX_AGE}, GEDER - {GENDER}, LIMIT - {LIMIT}"
+    )
 
     start_time = time.time()
     asyncio.run(main(table_name))

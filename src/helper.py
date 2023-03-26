@@ -18,3 +18,8 @@ def psycop_to_asyncpg_string(string: str) -> str:
         else:
             new_strings.append(w)
     return " ".join(new_strings)
+
+def batch(iterable, n=1):
+    l = len(iterable)
+    for ndx in range(0, l, n):
+        yield iterable[ndx:min(ndx + n, l)]

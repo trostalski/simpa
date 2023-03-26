@@ -70,6 +70,9 @@ class DistributionComparator(BaseComparator):
         mean = float(a.id_mean)
         std = float(a.id_std_dev)
 
+        if std == 0 or std is None:
+            return None
+
         value_a = float(a.value)
         value_b = float(b.value)
 
