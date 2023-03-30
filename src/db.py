@@ -161,7 +161,7 @@ class PostgresDB:
 
     # Get from similarity tables
     def get_all_similarity_values(self):
-        query = sq.all_similarity_values
+        query = sq.all_scaled_similarity_values
         db_result = self.execute_query(query)
         return db_result
 
