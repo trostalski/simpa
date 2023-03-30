@@ -28,3 +28,8 @@ test.*
 debug.py
 old.py
 graphs/
+logs
+
+# large sql files
+similarities*
+*.pickle

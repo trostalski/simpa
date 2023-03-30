@@ -54,23 +54,10 @@ WHERE
     hadm_id = ANY( %s );
 """
 
-all_similarity_values = """
+all_scaled_similarity_values = """
 SELECT 
-    d.hadm_id_a, d.hadm_id_b, d.raw_similarity_value AS demographics_similarity, 
-    i.raw_similarity_value AS icd_diagnoses_similarity, 
-    l.raw_similarity_value AS labevents_similarity, 
-    v.raw_similarity_value AS vitalsigns_similarity, 
-    e.raw_similarity_value AS inputevents_similarity
-FROM 
-    demographics_similarity d
-INNER JOIN 
-    icd_diagnoses_similarity i ON d.hadm_id_a = i.hadm_id_a AND d.hadm_id_b = i.hadm_id_b
-INNER JOIN 
-    labevents_similarity l ON d.hadm_id_a = l.hadm_id_a AND d.hadm_id_b = l.hadm_id_b
-INNER JOIN 
-    vitalsigns_similarity v ON d.hadm_id_a = v.hadm_id_a AND d.hadm_id_b = v.hadm_id_b
-INNER JOIN 
-    inputevents_similarity e ON d.hadm_id_a = e.hadm_id_a AND d.hadm_id_b = e.hadm_id_b;
+    demographics_similarity_scaled, vitalsigns_similarity_scaled, labevents_similarity_scaled, diagnoses_similarity_scaled, inputevents_similarity_scaled
+FROM similarities_20230326115023_scaled ;
 """
 
 vitalsign_mean_std = """
