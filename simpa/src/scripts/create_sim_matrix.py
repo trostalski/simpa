@@ -109,19 +109,19 @@ def main():
         storage_options=None,
     )
     lab_first24h_df.to_pickle(
-        f"./{EXP_PATH}/lab_first24h.pickle",
+        f"./{EXP_PATH}/lab_first_24h.pickle",
         compression="infer",
         protocol=5,
         storage_options=None,
     )
     vital_df.to_pickle(
-        f"./{EXP_PATH}/vital.pickle",
+        f"./{EXP_PATH}/vitals.pickle",
         compression="infer",
         protocol=5,
         storage_options=None,
     )
     vital_first24h_df.to_pickle(
-        f"./{EXP_PATH}/vital_first24h.pickle",
+        f"./{EXP_PATH}/vitals_first_24h.pickle",
         compression="infer",
         protocol=5,
         storage_options=None,

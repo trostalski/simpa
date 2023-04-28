@@ -6,110 +6,51 @@ print(sys.path)
 
 from dotenv import load_dotenv
 import pandas as pd
-import numpy as np
-from db import PostgresDB
-from tqdm import tqdm
-
-import dask.dataframe as dd
-import dask.array as da
-import dask.bag as db
 
 load_dotenv()
 
+# Path to pickle files
+DIR_PATH = "simpa/src/scripts/TR1"
 
 # generation of sim value calculation
 GENERATION = 1
 
 # SIMILARITY SCORE
-DEMO_WEIGHT = 0.00
-ICD_WEIGHT = 0.00
-LAB_WEIGHT = 1.00
+DEMO_WEIGHT = 0.10
+ICD_WEIGHT = 0.10
+LAB_WEIGHT = 0.00
+LAB_F24H_WEIGHT = 0.40
 VITALS_WEIGHT = 0.00
-INPUT_WEIGHT = 0.00
+VITALS_F24H_WEIGHT = 0.20
+INPUT_WEIGHT = 0.10
+PRESCRIPTION_WEIGHT = 0.10
 AGGREGATE = "mean"
-
-# CLUSTERING
-N_CLUSTERS = 4
-
-
-def create_similarity_matrix(
-    similarity_list,
-    demo_weight=DEMO_WEIGHT,
-    icd_weight=ICD_WEIGHT,
-    lab_weight=LAB_WEIGHT,
-    vitals_weight=VITALS_WEIGHT,
-    input_weight=INPUT_WEIGHT,
-    aggregate="mean",
-):
-    print(f"Size of similarity list: {len(similarity_list)}")
-    # Get a list of all patient IDs
-    patient_ids = list(set([t[0] for t in similarity_list]))
-    print("Finished retrieving patient ids")
-    print(f"Size of patient ids: {len(patient_ids)}")
-
-    # Create an empty matrix with NaN values
-    similarity_matrix = pd.DataFrame(index=patient_ids, columns=patient_ids)
-    print("Created matrix skeleton")
-
-    # calculate the similarity value
-    # Fill in the similarity values
-    none_count = 0
-    for i in tqdm(range(len(similarity_list))):
-        input_tuple = similarity_list[i]
-        demo_value = input_tuple[2]
-        icd_value = input_tuple[3]
-        lab_value = input_tuple[4]
-        vitals_value = input_tuple[5]
-        input_value = input_tuple[6]
-        if (
-            (input_value is None and input_weight > 0.00)
-            or (demo_value is None and demo_weight > 0.00)
-            or (icd_value is None and icd_weight > 0.00)
-            or (lab_value is None and lab_weight > 0.00)
-            or (vitals_value is None and vitals_weight > 0.00)
-        ):
-            none_count += 1
-            sim_value = None
-        elif aggregate == "mean":
-            sim_value = (
-                demo_weight * demo_value
-                + icd_weight * icd_value
-                + lab_weight * lab_value
-                + vitals_weight * vitals_value
-                + input_weight * input_value
-            )
-        similarity_matrix.at[similarity_list[i][0], similarity_list[i][1]] = sim_value
-        similarity_matrix.at[similarity_list[i][1], similarity_list[i][0]] = sim_value
-    print(f"Counted {none_count} numbers of none-similarities.")
-    similarity_matrix = similarity_matrix.fillna(float(1.0))
-
-    return similarity_matrix
 
 
 def main():
-    weights = [DEMO_WEIGHT, ICD_WEIGHT, LAB_WEIGHT, VITALS_WEIGHT, INPUT_WEIGHT]
-    wc = [str(w).replace(".", "") for w in weights]
-    file_name = f"sim{GENERATION}_D{wc[0]}IC{wc[1]}L{wc[2]}V{wc[3]}IP{wc[4]}"
-    db = PostgresDB(
-        db_name=os.getenv("DB_NAME"),
-        host=os.getenv("DB_HOST"),
-        port=os.getenv("DB_PORT"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
+    demo_df = pd.read_pickle(os.path.join(DIR_PATH, f"demographics.pickle"))
+    icd_df = pd.read_pickle(os.path.join(DIR_PATH, f"icd.pickle"))
+    lab_df = pd.read_pickle(os.path.join(DIR_PATH, f"lab.pickle"))
+    lab_first_24h_df = pd.read_pickle(os.path.join(DIR_PATH, f"lab_first_24h.pickle"))
+    vital_df = pd.read_pickle(os.path.join(DIR_PATH, f"vitals.pickle"))
+    vital_first_24h_df = pd.read_pickle(
+        os.path.join(DIR_PATH, f"vitals_first_24h.pickle")
     )
-    similarity_values = db.get_all_similarity_values()
-    df = create_similarity_matrix(
-        similarity_values,
-        demo_weight=DEMO_WEIGHT,
-        icd_weight=ICD_WEIGHT,
-        lab_weight=LAB_WEIGHT,
-        vitals_weight=VITALS_WEIGHT,
-        input_weight=INPUT_WEIGHT,
-        aggregate=AGGREGATE,
+    input_df = pd.read_pickle(os.path.join(DIR_PATH, f"input.pickle"))
+    prescription_df = pd.read_pickle(os.path.join(DIR_PATH, f"prescription.pickle"))
+
+    result_df = (
+        demo_df * DEMO_WEIGHT
+        + icd_df * ICD_WEIGHT
+        + lab_df * LAB_WEIGHT
+        + lab_first_24h_df * LAB_F24H_WEIGHT
+        + vital_df * VITALS_WEIGHT
+        + vital_first_24h_df * VITALS_F24H_WEIGHT
+        + input_df * INPUT_WEIGHT
+        + prescription_df * PRESCRIPTION_WEIGHT
     )
-    df.to_pickle(
-        f"./{file_name}.pickle", compression="infer", protocol=5, storage_options=None
-    )
+
+    result_df.to_pickle(os.path.join(DIR_PATH, f"sim_matrix.pickle"))
 
 
 if __name__ == "__main__":
