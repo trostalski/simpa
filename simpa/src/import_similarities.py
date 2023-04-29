@@ -39,8 +39,8 @@ from simpa.src.prescriptions import PrescriptionComparator
 MIN_AGE = 18
 MAX_AGE = 65
 LIMIT = 400
-BATCH_SIZE = 50
-GENDER = "F"
+BATCH_SIZE = 400
+# GENDER = None
 
 ICD_MAP_PATH = "simpa/src/sql/icd9_to_icd10_map.json"
 ################################
@@ -310,7 +310,7 @@ async def main(table_name: str):
     logger.info("Connected to databases, starting to download categories.")
 
     hadm_ids = await conn.fetch(
-        psycop_to_asyncpg_string(sq.sepsis_cohort), MIN_AGE, MAX_AGE, GENDER, LIMIT
+        psycop_to_asyncpg_string(sq.sepsis_cohort), MIN_AGE, MAX_AGE, LIMIT
     )
 
     logger.info("Finished downloading hadm_ids for cohort from db.")
@@ -560,7 +560,7 @@ if __name__ == "__main__":
     )
 
     logger.info(
-        f"PARAMETERS: MIN_AGE - {MIN_AGE}, MAX_AGE - {MAX_AGE}, GEDER - {GENDER}, LIMIT - {LIMIT}"
+        f"PARAMETERS: MIN_AGE - {MIN_AGE}, MAX_AGE - {MAX_AGE}, LIMIT - {LIMIT}"
     )
 
     start_time = time.time()

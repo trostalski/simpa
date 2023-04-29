@@ -206,7 +206,6 @@ WHERE
     AND p.subject_id = sta.subject_id 
     AND a.age >= %s
     AND a.age <= %s 
-    AND p.gender = %s
 LIMIT %s ;
 """
 
