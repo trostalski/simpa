@@ -91,7 +91,7 @@ class DistributionComparator(BaseComparator):
         self,
         set_a: list[DistributionCategory],
         set_b: list[DistributionCategory],
-        scale_by_distribution: bool,
+        scale_by_distribution: bool = True,
         aggregation: str = "mean",
     ) -> float:
         similarities = []
@@ -107,7 +107,7 @@ class DistributionComparator(BaseComparator):
                         similarities.append(similarity)
         if aggregation == "mean":
             if len(similarities) == 0:
-                similarity = 0
+                similarity = None
             elif len(similarities) == 1:
                 similarity = similarities[0]
             else:
