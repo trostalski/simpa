@@ -16,7 +16,7 @@ MIMIC-IV tables from the hosp-module that contribute to the different categories
 - Demographic: patients, admissions
 - Conditions: diagnoses_icd
 - Observations: omr, labitems, labevents
-- Treatment ??
+- Treatment 
 
 For each (sub-)catgory a similarity score is calculated as follows:
 - age
