@@ -1,9 +1,11 @@
 import psycopg2
+from simpa.src.helper import labevent_is_abnormal, vitalsign_is_abnormal
 
 from simpa.src.schemas import (
     Demographics,
     ICDDiagnosis,
     LabEvent,
+    Prescription,
     Vitalsign,
     InputEvent,
 )
@@ -75,7 +77,7 @@ class PostgresDB:
         """Get mean vital signs for a list of hadm_ids."""
         result = []
         vital_sign_names = VITAL_SIGN_NAMES
-        query = sq.get_mean_vitalsigns
+        query = sq.get_mean_vitalsigns_first_24h_icu
         db_result = self.execute_query(query, (hadm_ids,))
         for values in db_result:
             subject_id = values[0]
@@ -83,6 +85,7 @@ class PostgresDB:
             for name, value in zip(vital_sign_names, values[2:]):
                 mean = VITALSIGN_STATISTICS[name]["mean"]
                 std_dev = VITALSIGN_STATISTICS[name]["std"]
+                is_abnormal = vitalsign_is_abnormal(name=name, value=value)
                 result.append(
                     Vitalsign(
                         id=name,
@@ -92,13 +95,14 @@ class PostgresDB:
                         value=value,
                         id_mean=mean,
                         id_std_dev=std_dev,
+                        abnormal=is_abnormal,
                     )
                 )
         return result
 
     def get_mean_labevents(self, hadm_ids: list[int]):
         result = []
-        query = sq.get_mean_labevents
+        query = sq.get_mean_labevents_first_24h_icu
         db_result = self.execute_query(query, (hadm_ids,))
         for (
             itemid,
@@ -109,7 +113,16 @@ class PostgresDB:
             mean_value,
             std_dev,
             label,
+            lower_ref,
+            upper_ref,
         ) in db_result:
+            is_abnormal = labevent_is_abnormal(
+                valuenum=valuenum,
+                lower_ref=lower_ref,
+                upper_ref=upper_ref,
+                mean=mean_value,
+                std_dev=std_dev,
+            )
             result.append(
                 LabEvent(
                     id=itemid,
@@ -121,6 +134,10 @@ class PostgresDB:
                     id_mean=mean_value,
                     id_std_dev=std_dev,
                     label=label,
+                    abnormal=is_abnormal,
+                    upper_ref=upper_ref,
+                    lower_ref=lower_ref,
+                    valuenum=valuenum,
                 )
             )
         return result
@@ -144,7 +161,7 @@ class PostgresDB:
 
     def get_inputevents(self, hadm_ids: list[int]):
         result = []
-        query = sq.get_inputevents
+        query = sq.get_inputevents_first_24h_icu
         db_result = self.execute_query(query, (hadm_ids,))
         for (
             subject_id,
@@ -165,6 +182,26 @@ class PostgresDB:
                     ordercategoryname=ordercategoryname,
                 )
             )
+        return result
+
+    def get_prescriptions(self, hadm_ids: list[int]):
+        result = []
+        query = sq.get_prescriptions_first_24h_icu
+        db_result = self.execute_query(query, (hadm_ids,))
+        for subject_id, hadm_id, drug, pharmacy_id, gsn, value in db_result:
+            if not value:
+                print("No value for prescription", drug, pharmacy_id, gsn, value)
+            if value:
+                result.append(
+                    Prescription(
+                        subject_id=subject_id,
+                        hadm_id=hadm_id,
+                        drug=drug,
+                        pharmacy_id=pharmacy_id,
+                        gsn=gsn,
+                        value=value,
+                    )
+                )
         return result
 
     # Get from similarity tables
@@ -188,22 +225,41 @@ class PostgresDB:
 
     # Get endpoints
     def get_endpoints_for_hadm_id(self, hadm_id: int) -> tuple[int, int]:
-        los_icu_result, los_hospital_result = None, None
+        (
+            los_icu_result,
+            los_hospital_result,
+            icu_mortality,
+            hosp_mortality,
+            thirty_day_mortality,
+            one_year_mortality,
+        ) = (None, None, None, None, None, None)
         query = sq.endpoints_for_hadm_id
         db_result = self.execute_query(  # [(los_icu, los_hospital), ...]
             query,
             (hadm_id,),
         )
 
-        for los_icu, los_hospital in db_result:
+        for (
+            los_icu,
+            los_hospital,
+            icu_mortality,
+            hosp_mortality,
+            thirty_day_mortality,
+            one_year_mortality,
+        ) in db_result:
             if los_hospital is not None and los_hospital_result is None:
                 los_hospital_result = round(float(los_hospital), 1)
             if los_icu is not None:
                 if los_icu_result is None:
                     los_icu_result = round(float(los_icu), 1)
-                else:
-                    los_icu_result += round(float(los_icu), 1)
-        return los_icu_result, los_hospital_result
+        return (
+            los_icu_result,
+            los_hospital_result,
+            icu_mortality,
+            hosp_mortality,
+            thirty_day_mortality,
+            one_year_mortality,
+        )
 
     def get_labevent_by_id_for_hadm_ids(self, hadm_ids: list[int], item_id: int):
         query = sq.labevent_by_id_for_hadm_ids
@@ -232,3 +288,8 @@ class PostgresDB:
                 )
             )
         return result
+
+    def get_labevent_label(self, id: int):
+        query = sq.labevent_label
+        db_result = self.execute_query(query, (id,))
+        return db_result[0][0]

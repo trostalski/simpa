@@ -10,20 +10,20 @@ import pandas as pd
 load_dotenv()
 
 # Path to pickle files
-DIR_PATH = "simpa/src/scripts/TR1"
+DIR_PATH = "simpa/src/scripts/groups"
 
 # generation of sim value calculation
 GENERATION = 1
 
 # SIMILARITY SCORE
-DEMO_WEIGHT = 0.10
-ICD_WEIGHT = 0.10
-LAB_WEIGHT = 0.00
-LAB_F24H_WEIGHT = 0.30
-VITALS_WEIGHT = 0.00
-VITALS_F24H_WEIGHT = 0.30
-INPUT_WEIGHT = 0.10
-PRESCRIPTION_WEIGHT = 0.10
+DEMO_WEIGHT = 0.15
+ICD_WEIGHT = 0.15
+LAB_WEIGHT = 0.0
+LAB_F24H_WEIGHT = 0.2
+VITALS_WEIGHT = 0.0
+VITALS_F24H_WEIGHT = 0.2
+INPUT_WEIGHT = 0.15
+PRESCRIPTION_WEIGHT = 0.15
 AGGREGATE = "mean"
 
 

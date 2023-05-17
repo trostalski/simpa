@@ -1,7 +1,6 @@
 import os
 import sys
 
-print(sys.path)
 from dotenv import load_dotenv
 import logging
 import asyncio
@@ -13,7 +12,13 @@ import json
 from datetime import datetime
 
 import simpa.src.sql_queries as sq
-from simpa.src.helper import batch, psycop_to_asyncpg_string, scale_to_range
+from simpa.src.helper import (
+    batch,
+    labevent_is_abnormal,
+    psycop_to_asyncpg_string,
+    scale_to_range,
+    vitalsign_is_abnormal,
+)
 from simpa.src.schemas import (
     Demographics,
     LabEvent,
@@ -38,9 +43,9 @@ from simpa.src.prescriptions import PrescriptionComparator
 ########## PARAMETERS ##########
 MIN_AGE = 18
 MAX_AGE = 65
-LIMIT = 400
+LIMIT = None
 BATCH_SIZE = 400
-# GENDER = None
+GENDER = "F"
 
 ICD_MAP_PATH = "simpa/src/sql/icd9_to_icd10_map.json"
 ################################
@@ -54,6 +59,18 @@ icd_comp = ICDComparator()
 inputevent_comp = InputEventComparator()
 vitalsign_comp = VitalsignComparator()
 prescriptions_comp = PrescriptionComparator()
+
+
+def remove_empty_data(hadm_data):
+    result = {}
+    for k, v in hadm_data.items():
+        empty = True
+        for k2, v2 in v.items():
+            if isinstance(v2, list) and len(v2) > 0:
+                empty = False
+        if not empty:
+            result[k] = v
+    return result
 
 
 async def insert_similarities(conn: Connection, similarites, table_name: str):
@@ -247,6 +264,7 @@ def compare_encounters(encounter_pair: tuple[dict, dict]):
     vitalsign_sim = None
     vitalsign_first24h_sim = None
     inputevent_sim = None
+    prescriptions_sim = None
 
     if "labevents" in encounter_a and "labevents" in encounter_b:
         lab_sim = labevent_comp.compare(
@@ -312,6 +330,12 @@ async def main(table_name: str):
     hadm_ids = await conn.fetch(
         psycop_to_asyncpg_string(sq.sepsis_cohort), MIN_AGE, MAX_AGE, LIMIT
     )
+    # kdigo_cohort = await conn.fetch(psycop_to_asyncpg_string(sq.kdigo_cohort))
+    # meld_cohort = await conn.fetch(psycop_to_asyncpg_string(sq.meld_cohort))
+    # cardiac_cohort = await conn.fetch(psycop_to_asyncpg_string(sq.cardiac_query))
+    # cardiac_cohort = await conn.fetch(psycop_to_asyncpg_string(sq.cardiac_query_2))
+    # icp_cohort = await conn.fetch(psycop_to_asyncpg_string(sq.icp_cohort))
+    # hadm_ids = meld_cohort + cardiac_cohort
 
     logger.info("Finished downloading hadm_ids for cohort from db.")
     demographics_records = await conn.fetch(
@@ -339,11 +363,11 @@ async def main(table_name: str):
     )
     logger.info("Finished downloading vitalsigns first 24h for cohort from db.")
     inputevents_records = await conn.fetch(
-        psycop_to_asyncpg_string(sq.get_inputevents), hadm_ids
+        psycop_to_asyncpg_string(sq.get_inputevents_first_24h_icu), hadm_ids
     )
     logger.info("Finished downloading inputevents for cohort from db.")
     prescription_records = await conn.fetch(
-        psycop_to_asyncpg_string(sq.get_prescriptions_icu), hadm_ids
+        psycop_to_asyncpg_string(sq.get_prescriptions_first_24h_icu), hadm_ids
     )
     logger.info("Finished downloading prescriptions for cohort from db.")
 
@@ -386,12 +410,9 @@ async def main(table_name: str):
         std_dev = i["std_dev"]
         lower_ref = i["ref_range_lower"]
         upper_ref = i["ref_range_upper"]
-        if upper_ref and lower_ref:
-            is_abnormal = valuenum < lower_ref or valuenum > upper_ref
-        elif mean and std_dev:
-            is_abnormal = valuenum < mean - 2 * std_dev or valuenum > mean + 2 * std_dev
-        else:
-            is_abnormal = False
+        is_abnormal = labevent_is_abnormal(
+            valuenum, lower_ref, upper_ref, mean, std_dev
+        )
         hadm_data[i["hadm_id"]]["labevents"].append(
             LabEvent(
                 id=i["itemid"],
@@ -416,12 +437,9 @@ async def main(table_name: str):
         std_dev = i["std_dev"]
         lower_ref = i["ref_range_lower"]
         upper_ref = i["ref_range_upper"]
-        if upper_ref and lower_ref:
-            is_abnormal = valuenum < lower_ref or valuenum > upper_ref
-        elif mean and std_dev:
-            is_abnormal = valuenum < mean - 2 * std_dev or valuenum > mean + 2 * std_dev
-        else:
-            is_abnormal = False
+        is_abnormal = labevent_is_abnormal(
+            valuenum, lower_ref, upper_ref, mean, std_dev
+        )
         hadm_data[i["hadm_id"]]["labevents_first24h"].append(
             LabEvent(
                 id=i["itemid"],
@@ -446,10 +464,7 @@ async def main(table_name: str):
                 continue
             id_mean = VITALSIGN_STATISTICS[name]["mean"]
             id_std_dev = VITALSIGN_STATISTICS[name]["std"]
-            is_abnormal = (
-                value < VITALSIGN_NORM_RANGE[name]["lower"]
-                or value > VITALSIGN_NORM_RANGE[name]["upper"]
-            )
+            is_abnormal = vitalsign_is_abnormal(value, name)
             hadm_data[i["hadm_id"]]["vitalsigns"].append(
                 Vitalsign(
                     id=name,
@@ -472,10 +487,7 @@ async def main(table_name: str):
                 continue
             id_mean = VITALSIGN_STATISTICS[name]["mean"]
             id_std_dev = VITALSIGN_STATISTICS[name]["std"]
-            is_abnormal = (
-                value < VITALSIGN_NORM_RANGE[name]["lower"]
-                or value > VITALSIGN_NORM_RANGE[name]["upper"]
-            )
+            is_abnormal = vitalsign_is_abnormal(value, name)
             hadm_data[i["hadm_id"]]["vitalsigns_first24h"].append(
                 Vitalsign(
                     id=name,
@@ -520,6 +532,8 @@ async def main(table_name: str):
 
     logger.info("Finished building similarity encounters.")
 
+    hadm_data = remove_empty_data(hadm_data)
+    hadm_ids = list(hadm_data.keys())
     encounter_pairs = []
     n = len(hadm_ids)
     batch_size = BATCH_SIZE
@@ -536,12 +550,11 @@ async def main(table_name: str):
                 )
                 encounter_pairs.append(pair)
 
-        with Pool(6) as pool:
+        with Pool() as pool:
             logger.info(f"Batch of {len(encounter_pairs)} created.")
             logger.info("Starting multiprocesses to calculate similarities")
             result = pool.map(compare_encounters, encounter_pairs)
         logger.info(f"Inserting a batch of {len(result)} into database.")
-
         await insert_similarities(conn=conn, similarites=result, table_name=table_name)
         encounter_pairs = []
 

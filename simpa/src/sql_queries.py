@@ -40,7 +40,7 @@ WHERE
     AND i.hadm_id = id.hadm_id
     AND v.charttime >= DATETIME_SUB(ie.intime, INTERVAL '6' HOUR)
     AND v.charttime <= DATETIME_ADD(ie.intime, INTERVAL '1' DAY)
-    AND id.first_icu_stay = 'true'
+    AND id.first_icu_stay = true
 GROUP BY 
     i.hadm_id, i.subject_id;
 """
@@ -105,7 +105,7 @@ WHERE
     AND ie.hadm_id = ip.hadm_id
     AND ie.hadm_id = id.hadm_id
     AND ip.starttime >= DATETIME_SUB(ie.intime, INTERVAL '6' HOUR)
-    AND ip.starttime <= DATETIME_ADD(ie.intime, INTERVAL '1' DAY);
+    AND ip.starttime <= DATETIME_ADD(ie.intime, INTERVAL '1' DAY)
     AND id.first_icu_stay = 'true';
 """
 
@@ -143,17 +143,17 @@ get_prescriptions_first_24h_icu = """
 SELECT 
     pr.subject_id, pr.hadm_id, pr.pharmacy_id, pr.drug, pr.gsn, gi.id as value
 FROM 
-    mimiciv_hosp.prescription pr,
+    mimiciv_hosp.prescriptions pr,
     mimiciv_icu.icustays ie,
     mimiciv_derived.icustay_detail id,
-    mimiviv.gsn_ids gi
+    gsn_ids gi
 WHERE 
     pr.hadm_id = ANY( %s )
     AND pr.gsn = gi.gsn
-    AND ie.hadm_id = ip.hadm_id
+    AND ie.hadm_id = pr.hadm_id
     AND ie.hadm_id = id.hadm_id
     AND pr.starttime >= DATETIME_SUB(ie.intime, INTERVAL '6' HOUR)
-    AND pr.starttime <= DATETIME_ADD(ie.intime, INTERVAL '1' DAY);
+    AND pr.starttime <= DATETIME_ADD(ie.intime, INTERVAL '1' DAY)
     AND id.first_icu_stay = 'true';
 """
 
@@ -161,7 +161,7 @@ all_scaled_similarity_values = """
 SELECT 
     hadm_id_a, hadm_id_b, demographics_similarity_scaled, vitalsigns_similarity_scaled, labevents_similarity_scaled, diagnoses_similarity_scaled,
     inputevents_similarity_scaled, labevents_first24h_similarity_scaled, vitalsigns_first24h_similarity_scaled, prescriptions_similarity_scaled
-FROM similarities_20230428160721_scaled 
+FROM similarities_20230516144951_scaled
 ORDER BY hadm_id_a, hadm_id_b DESC;
 """
 
@@ -185,11 +185,42 @@ WHERE
 
 endpoints_for_hadm_id = """
 SELECT 
-    los_icu, los_hospital
+    id.los_icu,
+    id.los_hospital,
+    CASE WHEN id.dod <= DATETIME_ADD(ie.outtime, INTERVAL '6' HOUR) THEN 1 ELSE 0 END AS icu_mortality,
+    CASE WHEN id.dod <= DATETIME_ADD(ad.dischtime, INTERVAL '6' HOUR) THEN 1 ELSE 0 END AS hosp_mortality,
+    CASE WHEN id.dod <= DATETIME_ADD(ad.dischtime, INTERVAL '30' DAY) THEN 1 ELSE 0 END AS thirty_day_mortality,
+    CASE WHEN id.dod <= DATETIME_ADD(ad.dischtime, INTERVAL '1' YEAR) THEN 1 ELSE 0 END AS one_year_mortality
 FROM 
-    mimiciv_derived.icustay_detail
+    mimiciv_derived.icustay_detail id,
+    mimiciv_icu.icustays ie,
+    mimiciv_hosp.admissions ad
 WHERE 
-    hadm_id = %s ;
+    id.hadm_id = ie.hadm_id AND
+    id.hadm_id = ad.hadm_id AND
+    id.hadm_id = %s ;
+"""
+
+endpoints_for_hadm_ids = """
+SELECT 
+    id.hadm_id,
+    id.los_icu,
+    id.los_hospital,
+    CASE WHEN id.dod <= DATETIME_ADD(ie.outtime, INTERVAL '6' HOUR) THEN 1 ELSE 0 END AS icu_mortality,
+    CASE WHEN id.dod <= DATETIME_ADD(ad.dischtime, INTERVAL '6' HOUR) THEN 1 ELSE 0 END AS hosp_mortality,
+    CASE WHEN id.dod <= DATETIME_ADD(ad.dischtime, INTERVAL '30' DAY) THEN 1 ELSE 0 END AS thirty_day_mortality,
+    CASE WHEN id.dod <= DATETIME_ADD(ad.dischtime, INTERVAL '1' YEAR) THEN 1 ELSE 0 END AS one_year_mortality
+FROM 
+    mimiciv_derived.icustay_detail id,
+    mimiciv_icu.icustays ie,
+    mimiciv_hosp.admissions ad
+WHERE 
+    id.hadm_id = ie.hadm_id AND
+    id.hadm_id = ad.hadm_id AND
+    id.first_icu_stay = true AND
+    id.hadm_id = ANY( %s )
+GROUP BY
+    id.hadm_id, id.los_icu, id.los_hospital, icu_mortality, hosp_mortality, thirty_day_mortality, one_year_mortality;
 """
 
 sepsis_cohort = """
@@ -206,7 +237,62 @@ WHERE
     AND p.subject_id = sta.subject_id 
     AND a.age >= %s
     AND a.age <= %s 
+    AND p.gender = 'F'
 LIMIT %s ;
+"""
+
+kdigo_cohort = """
+    SELECT DISTINCT sta.hadm_id
+    FROM mimiciv_derived.kdigo_stages kdigo, mimiciv_icu.icustays sta
+    WHERE kdigo.stay_id = sta.stay_id 
+    AND kdigo.aki_stage > 2
+    AND EXISTS (SELECT 1 FROM mimiciv_hosp.labevents lab WHERE lab.hadm_id = sta.hadm_id)
+    ORDER BY sta.hadm_id
+    LIMIT 400;
+"""
+
+icp_cohort = """
+    SELECT DISTINCT sta.hadm_id
+    FROM mimiciv_derived.icp icp, mimiciv_icu.icustays sta
+    WHERE icp.stay_id = sta.stay_id 
+    AND icp.icp > 25
+    AND EXISTS (SELECT 1 FROM mimiciv_hosp.labevents lab WHERE lab.hadm_id = sta.hadm_id)
+    ORDER BY sta.hadm_id
+    LIMIT 400;
+"""
+
+meld_cohort = """
+    SELECT DISTINCT sta.hadm_id
+    FROM mimiciv_derived.meld meld, mimiciv_icu.icustays sta
+    WHERE meld.stay_id = sta.stay_id
+    AND EXISTS (SELECT 1 FROM mimiciv_hosp.labevents lab WHERE lab.hadm_id = sta.hadm_id)
+    AND meld.meld > 32
+    ORDER BY sta.hadm_id
+    LIMIT 400;
+"""
+
+cardiac_query = """
+    SELECT DISTINCT card.hadm_id
+    FROM mimiciv_derived.cardiac_marker card, mimiciv_icu.icustays sta, mimiciv_derived.meld meld
+    WHERE card.hadm_id IS NOT NULL
+    AND card.ntprobnp > 1000
+    AND EXISTS (SELECT 1 FROM mimiciv_hosp.labevents lab WHERE lab.hadm_id = card.hadm_id)
+    AND card.hadm_id = sta.hadm_id
+    AND meld.stay_id = sta.stay_id
+    AND meld.meld < 20
+    ORDER BY card.hadm_id
+    LIMIT 400;
+"""
+
+cardiac_query_2 = """
+    SELECT DISTINCT card.hadm_id
+    FROM mimiciv_derived.cardiac_marker card, mimiciv_icu.icustays sta
+    WHERE card.hadm_id IS NOT NULL
+    AND card.ntprobnp > 10000
+    AND EXISTS (SELECT 1 FROM mimiciv_hosp.labevents lab WHERE lab.hadm_id = card.hadm_id)
+    AND card.hadm_id = sta.hadm_id
+    ORDER BY card.hadm_id
+    LIMIT 400;
 """
 
 create_similarity_table = """
@@ -254,3 +340,10 @@ FROM mimiciv_hosp.labevents le, mimiciv_hosp.d_labitems li
 WHERE le.itemid = li.itemid AND li.label like '% %s %'
 group by le.itemid, li.label;
 """
+
+labevent_label = """
+SELECT label
+FROM mimiciv_hosp.d_labitems
+WHERE itemid = %s;
+"""
+

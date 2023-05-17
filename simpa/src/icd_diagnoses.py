@@ -14,7 +14,10 @@ load_dotenv()
 
 
 def load_icd10_graph(path: str = "simpa/src/graphs/icd10_nx.gpickle"):
-    G_default = nx.read_gpickle(path)
+    try:
+        G_default = nx.read_gpickle(path)
+    except Exception:
+        G_default = nx.read_gpickle("../graphs/icd10_nx.gpickle")
     G = NXOntology(G_default)
     G.freeze()
     print("Loaded ICD10 graph")

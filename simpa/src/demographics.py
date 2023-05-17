@@ -14,10 +14,11 @@ class DemographicsComparator:
         demographics_b: Union[list[Demographics], Demographics],
     ) -> float:
         age_similarity = self._compare_age(demographics_a, demographics_b)
-        gender_similarity = self._compare_gender(demographics_a, demographics_b)
+        # gender_similarity = self._compare_gender(demographics_a, demographics_b)
         # commented because often not available
         # ethnicity_similartiy = self._compare_ethnicity(demographics_a, demographics_b)
-        return statistics.mean([age_similarity, gender_similarity])
+        return age_similarity
+        # return statistics.mean([age_similarity])
 
     def _compare_age(
         self, demographics_a: Demographics, demographics_b: Demographics

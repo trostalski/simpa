@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 import statistics
 from scipy.stats import norm
 
-from simpa.src.schemas import DistributionCategory
+from simpa.src.schemas import CodedNumerical, Numerical
 
 
 class BaseComparator(ABC):
@@ -28,7 +28,7 @@ def value_is_valid(value: str) -> bool:
     return result
 
 
-def items_have_mean_and_std(a: DistributionCategory, b: DistributionCategory):
+def items_have_mean_and_std(a: CodedNumerical, b: CodedNumerical):
     return (
         a.id_mean is not None
         and a.id_std_dev is not None
@@ -42,14 +42,14 @@ class DistributionComparator(BaseComparator):
         pass
 
     def compare(
-        self, a: DistributionCategory, b: DistributionCategory, *args, **kwargs
+        self, a: CodedNumerical, b: CodedNumerical, *args, **kwargs
     ):
         return super().compare(a, b, *args, **kwargs)
 
     def _compare_pair(
         self,
-        a: DistributionCategory,
-        b: DistributionCategory,
+        a: CodedNumerical,
+        b: CodedNumerical,
         scale_by_distribution: bool = True,
     ):
         if a.hadm_id == b.hadm_id:
@@ -89,8 +89,8 @@ class DistributionComparator(BaseComparator):
 
     def _compare_set(
         self,
-        set_a: list[DistributionCategory],
-        set_b: list[DistributionCategory],
+        set_a: list[CodedNumerical],
+        set_b: list[CodedNumerical],
         scale_by_distribution: bool = True,
         aggregation: str = "mean",
     ) -> float:
@@ -131,3 +131,17 @@ class BinaryComparator(BaseComparator):
         intersection = set_a.intersection(set_b)
         union = set_a.union(set_b)
         return len(intersection) / len(union)
+
+
+class NumericalComparator(BaseComparator):
+    def __init__(self):
+        pass
+
+    def compare(self, a, b, *args, **kwargs):
+        return super().compare(a, b, *args, **kwargs)
+
+    def _compare_pair(self, a: Numerical, b: Numerical):
+        return 1 - (abs(a.value - b.value) - a.max_value / a.max_value - a.min_value)
+
+    def _compare_set(self, set_a: list[Numerical], set_b: list[Numerical]):
+        pass

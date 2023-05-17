@@ -2,15 +2,30 @@ from typing import Optional, Union, Any
 from pydantic import BaseModel, validator
 
 
-class DistributionCategory(BaseModel):
+class Numerical(BaseModel):
+    value: float
+    max_value: float
+    min_value: float
+
+
+class Categorical(BaseModel):
+    value: str
+
+
+class CodedConcept(BaseModel):
+    value: str
+    code: str
+
+
+class CodedNumerical(BaseModel):
     id: Union[int, str]
     value: Optional[float]
     id_mean: Optional[float]
     id_std_dev: Optional[float]
-    abnormal: Optional[bool] = False
+    abnormal: Optional[bool] = True
 
 
-class BinaryCategory(BaseModel):
+class CategoricalString(BaseModel):
     value: Any
 
 
@@ -23,7 +38,7 @@ class Demographics(BaseModel):
     height: Optional[float]
 
 
-class LabEvent(DistributionCategory):
+class LabEvent(CodedNumerical):
     itemid: int
     subject_id: int
     hadm_id: Optional[int]
@@ -32,13 +47,13 @@ class LabEvent(DistributionCategory):
     label: Optional[str]
 
 
-class Vitalsign(DistributionCategory):
+class Vitalsign(CodedNumerical):
     subject_id: int
     hadm_id: int
     name: str
 
 
-class InputEvent(BinaryCategory):
+class InputEvent(CategoricalString):
     subject_id: int
     hadm_id: int
     itemid: int
@@ -51,12 +66,12 @@ class InputEvent(BinaryCategory):
         return round(v, 2)
 
 
-class Prescription(BinaryCategory):
+class Prescription(CategoricalString):
     subject_id: int
     hadm_id: int
-    pharmacy_id: int
-    drug: str
-    gsn: str
+    pharmacy_id: Optional[Union[int, str]]
+    drug: Optional[str]
+    gsn: Optional[str]
 
 
 class ICDDiagnosis(BaseModel):
@@ -73,21 +88,27 @@ class Proband(BaseModel):
     subject_id: Optional[int]
     los_icu: Optional[float]
     los_hosp: Optional[float]
+    hosp_mortality: Optional[int]
+    icu_mortality: Optional[int]
+    thirty_day_mortality: Optional[int]
+    one_year_mortality: Optional[int]
 
 
 class SimilarityEncounter(BaseModel):
     hadm_id: int
+    subject_id: int
     demographics: Optional[Demographics] = None
     diagnoses: Optional[list[ICDDiagnosis]] = None
     labevents: Optional[list[LabEvent]] = None
     vitalsigns: Optional[list[Vitalsign]] = None
     inputevents: Optional[list[InputEvent]] = None
+    prescriptions: Optional[list[Prescription]] = None
 
     def __eq__(self, other: Any) -> bool:
         return self.hadm_id == other.hadm_id
 
 
-class Pharmacy(BaseModel):
+class Pharmacy(CategoricalString):
     subject_id: int
     hadm_id: int
     pharmacy_id: int

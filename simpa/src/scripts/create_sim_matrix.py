@@ -15,7 +15,7 @@ load_dotenv()
 
 
 # generation of sim value calculation
-EXP_PATH = "simpa/src/scripts/TR1"
+EXP_PATH = "simpa/src/scripts/groups"
 
 
 def main():

@@ -1,3 +1,4 @@
+import json
 import time
 from typing import Optional
 import math
@@ -5,12 +6,15 @@ import logging
 
 from simpa.src.helper import scale_to_range
 from simpa.src.db import PostgresDB
-from simpa.src.icd_diagnoses import ICDComparator, ICDDiagnosis
+from simpa.src.icd_diagnoses import ICDComparator, ICDDiagnosis, load_icd10_graph
+from simpa.src.import_similarities import ICD_MAP_PATH
 from simpa.src.labevents import LabEventComparator
 from simpa.src.demographics import DemographicsComparator
+from simpa.src.prescriptions import PrescriptionComparator
 from simpa.src.vitalsigns import VitalsignComparator
 from simpa.src.inputevents import InputEventComparator
 from simpa.src.schemas import (
+    Prescription,
     Proband,
     SimilarityEncounter,
     LabEvent,
@@ -21,6 +25,34 @@ from simpa.src.schemas import (
 
 logger = logging.getLogger(__name__)
 
+def clean_diagnoses_records(diagnoses: list[ICDDiagnosis]):
+    logger.info("Cleaning diagnoses.")
+    result = []
+    G = load_icd10_graph()
+    good_c = 0
+    bad_c = 0
+    with open("../sql/icd9_to_icd10_map.json") as f:
+        map = json.load(f)
+        map = map["data"]
+        for d in diagnoses:
+            d.icd_code = d.icd_code.strip()
+            icd_version = d.icd_version
+            icd_code = d.icd_code
+            if icd_version == 9:
+                if icd_code in [m["code"] for m in map]:  # code in map
+                    new_code = [m["icd10_code"] for m in map if m["code"] == icd_code]
+                    d.icd_code = new_code[0]
+                    d.icd_version = 10
+                else:  # code not in map
+                    d.icd_code = None
+                    d.icd_version = None
+            if d.icd_code in G.graph.nodes:
+                good_c += 1
+                result.append(d)
+            else:
+                bad_c += 1
+    print(f"Cleaned {bad_c} bad diagnoses records, {good_c} good diagnoses records")
+    return result
 
 def get_count_of_encounters_with_diagnosis(
     input_code: str, all_encounters: tuple[SimilarityEncounter]
@@ -57,33 +89,24 @@ class Cohort:
 
     def initialize_data(self, with_tfidf_diagnoses: bool = False):
         """Initialize data for the cohort."""
-        start_time = time.time()
         self.demographics = self.db.get_patient_demographics(self.hadm_ids)
-        # print(f"Demographics: {time.time() - start_time}")
         self.diagnoses = self.db.get_icd_diagnoses(self.hadm_ids)
-        # print(f"Diagnoses: {time.time() - start_time}")
+        self.diagnoses = clean_diagnoses_records(self.diagnoses)
         labevents = self.db.get_mean_labevents(self.hadm_ids)
-        # print(f"Labevents: {time.time() - start_time}")
         self.labevents = [l for l in labevents if l.value is not None]
-        # print(f"Labevents: {time.time() - start_time}")
         self.vitalsigns = self.db.get_mean_vitalsigns(self.hadm_ids)
-        # print(f"Vitalsigns: {time.time() - start_time}")
         self.inputevents = self.db.get_inputevents(self.hadm_ids)
-        # print(f"Inputevents: {time.time() - start_time}")
+        self.prescriptions = self.db.get_prescriptions(self.hadm_ids)
         self.similarity_encounters = self._create_similarity_encounters()
-        # print(f"Similarity encounters: {time.time() - start_time}")
-        if with_tfidf_diagnoses:
-            self.encounter_with_code_cache = {}
-            self._get_tfidf_scores_for_encounters()
-        # print(f"TFIDF: {time.time() - start_time}")
 
     def compare_encounters(
         self,
-        demographics_weight: float = 0.1,
-        diagnoses_weight: float = 0.2,
-        labevents_weight: float = 0.4,
+        demographics_weight: float = 0.15,
+        diagnoses_weight: float = 0.15,
+        labevents_weight: float = 0.2,
         vitalsigns_weight: float = 0.2,
-        inputevents_weight: float = 0.1,
+        inputevents_weight: float = 0.15,
+        prescription_weight: float = 0.15,
         aggregate_method: str = None,
         normalize_categories: bool = True,
         scale_by_distribution: bool = True,
@@ -118,6 +141,7 @@ class Cohort:
                         vitalsigns_weight=vitalsigns_weight,
                         inputevents_weight=inputevents_weight,
                         scale_by_distribution=scale_by_distribution,
+                        prescriptions_weight=prescription_weight,
                         aggregate_method=aggregate_method
                         if not normalize_categories
                         else None,
@@ -177,17 +201,22 @@ class Cohort:
             lab = [l for l in self.labevents if l.hadm_id == patient.hadm_id]
             vitalsigns = [v for v in self.vitalsigns if v.hadm_id == patient.hadm_id]
             inputevents = [i for i in self.inputevents if i.hadm_id == patient.hadm_id]
+            prescriptions = [
+                p for p in self.prescriptions if p.hadm_id == patient.hadm_id
+            ]
             for d in self.demographics:
                 if d.hadm_id == patient.hadm_id:
                     demo = d
             result.append(
                 SimilarityEncounter(
                     hadm_id=patient.hadm_id,
+                    subject_id=patient.subject_id,
                     diagnoses=diagnoses,
                     demographics=demo,
                     labevents=lab,
                     vitalsigns=vitalsigns,
                     inputevents=inputevents,
+                    prescriptions=prescriptions,
                 )
             )
         return result
@@ -197,6 +226,10 @@ class Cohort:
             (
                 participant.los_icu,
                 participant.los_hosp,
+                participant.icu_mortality,
+                participant.hosp_mortality,
+                participant.thirty_day_mortality,
+                participant.one_year_mortality,
             ) = self.db.get_endpoints_for_hadm_id(participant.hadm_id)
 
     def _get_tfidf_scores_for_encounters(self) -> dict:
@@ -378,11 +411,12 @@ class EncounterComparator:
         self,
         encounter_a: SimilarityEncounter,
         encounter_b: SimilarityEncounter,
-        demographics_weight: float = 0.1,
-        diagnoses_weight: float = 0.2,
-        labevents_weight: float = 0.4,
-        vitalsigns_weight: float = 0.2,
-        inputevents_weight: float = 0.1,
+        demographics_weight: float,
+        diagnoses_weight: float,
+        labevents_weight: float,
+        vitalsigns_weight: float,
+        inputevents_weight: float,
+        prescriptions_weight: float,
         aggregate_method: str = None,
         scale_by_distribution: bool = True,
     ) -> dict:
@@ -391,38 +425,27 @@ class EncounterComparator:
             demographics_a=encounter_a.demographics,
             demographics_b=encounter_b.demographics,
         )
-        # print(f"compared demographics in {time.time() - start_time} seconds")
-        # print("compared demographics")
         diagnoses_sim = self._compare_diagnoses(
             diagnoses_a=encounter_a.diagnoses,
             diagnoses_b=encounter_b.diagnoses,
         )
-        # print(f"compared diagnoses in {time.time() - start_time} seconds")
-        # print("compared diagnoses")
         labevents_sim = self._compare_labevents(
             labevents_a=encounter_a.labevents,
             labevents_b=encounter_b.labevents,
             scale_by_distribution=scale_by_distribution,
         )
-        # print(f"compared labevents in {time.time() - start_time} seconds")
-        # print("compared labevents")
         vitalsign_sim = self._compare_vitalsigns(
             vitalsigns_a=encounter_a.vitalsigns,
             vitalsigns_b=encounter_b.vitalsigns,
             scale_by_distribution=scale_by_distribution,
         )
-        # print(f"compared vitalsigns in {time.time() - start_time} seconds")
-        # print("compared vitalsigns")
         inputevents_sim = self._compare_inputevents(
             inputevents_a=encounter_a.inputevents, inputevents_b=encounter_b.inputevents
         )
-        # print("compared inputevents")
-
-        # print(f"Demographics: {demographics_sim}")
-        # print(f"Diagnoses: {diagnoses_sim}")
-        # print(f"Labevents: {labevents_sim}")
-        # print("-----------------------------\n")
-
+        prescriptions_sim = self._compare_prescriptions(
+            prescriptions_a=encounter_a.prescriptions,
+            prescriptions_b=encounter_b.prescriptions,
+        )
         if aggregate_method is None:
             result = {
                 "demographics_sim": demographics_sim,
@@ -430,6 +453,7 @@ class EncounterComparator:
                 "labevents_sim": labevents_sim,
                 "vitalsigns_sim": vitalsign_sim,
                 "inputevents_sim": inputevents_sim,
+                "prescriptions_sim": prescriptions_sim,
             }
         elif aggregate_method == "mean":
             result = (
@@ -438,6 +462,7 @@ class EncounterComparator:
                 + labevents_sim * labevents_weight
                 + vitalsign_sim * vitalsigns_weight
                 + inputevents_sim * inputevents_weight
+                + prescriptions_sim * prescriptions_weight
             )
         elif aggregate_method == "rmse":
             result = math.sqrt(
@@ -446,6 +471,7 @@ class EncounterComparator:
                 + (labevents_sim**2 * labevents_weight)
                 + (vitalsign_sim**2 * vitalsigns_weight)
                 + (inputevents_sim**2 * inputevents_weight)
+                + (prescriptions_sim**2 * prescriptions_weight)
             )
         else:
             raise ValueError(f"Unknown aggregate method {aggregate_method}")
@@ -493,3 +519,11 @@ class EncounterComparator:
     ) -> float:
         comparator = InputEventComparator()
         return comparator.compare(inputevents_a, inputevents_b)
+
+    def _compare_prescriptions(
+        self,
+        prescriptions_a: list[Prescription],
+        prescriptions_b: list[Prescription],
+    ) -> float:
+        comparator = PrescriptionComparator()
+        return comparator.compare(prescriptions_a, prescriptions_b)

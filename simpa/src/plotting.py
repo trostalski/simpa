@@ -154,7 +154,7 @@ def plot_endpoint_for_cluster(
 
 
 def plot_endpoints_for_clusters(participants, clusters):
-    endpoints = ["los_hosp", "los_icu"]
+    endpoints = ["los_hosp", "los_icu", "icu_mortality", "hosp_mortality", "thirty_day_mortality", "one_year_mortality"]
 
     # Create a figure with two subplots
     fig, axes = plt.subplots(

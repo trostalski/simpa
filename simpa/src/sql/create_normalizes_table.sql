@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS similarities_20230428160721_scaled AS
+CREATE TABLE IF NOT EXISTS similarities_20230516144951_scaled AS
 with min_max_val AS (
     SELECT
         min(demographics_similarity) AS demographics_similarity_min,
@@ -18,7 +18,7 @@ with min_max_val AS (
         min(prescriptions_similarity) AS prescriptions_similarity_min,
         max(prescriptions_similarity) AS prescriptions_similarity_max
     FROM
-        similarities_20230428160721
+        similarities_20230516144951
 )
 SELECT
     hadm_id_a,
@@ -112,4 +112,4 @@ SELECT
             prescriptions_similarity_min
         FROM min_max_val)) AS prescriptions_similarity_scaled
 FROM
-    similarities_20230428160721
+    similarities_20230516144951
