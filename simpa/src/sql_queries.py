@@ -95,17 +95,19 @@ WHERE
 
 get_inputevents_first_24h_icu = """
 SELECT 
-    ip.subject_id, ip.hadm_id, ip.itemid, ip.amount, ip.amountuom, ip.ordercategoryname
+    ip.subject_id, ip.hadm_id, ip.itemid, ip.amount, ip.amountuom, ip.ordercategoryname, di.label
 FROM 
     mimiciv_icu.inputevents ip,
     mimiciv_icu.icustays ie,
-    mimiciv_derived.icustay_detail id
+    mimiciv_derived.icustay_detail id,
+    mimiciv_icu.d_items di
 WHERE 
     ip.hadm_id = ANY( %s )
     AND ie.hadm_id = ip.hadm_id
     AND ie.hadm_id = id.hadm_id
     AND ip.starttime >= DATETIME_SUB(ie.intime, INTERVAL '6' HOUR)
     AND ip.starttime <= DATETIME_ADD(ie.intime, INTERVAL '1' DAY)
+    AND ip.itemid = di.itemid
     AND id.first_icu_stay = 'true';
 """
 
@@ -161,7 +163,7 @@ all_scaled_similarity_values = """
 SELECT 
     hadm_id_a, hadm_id_b, demographics_similarity_scaled, vitalsigns_similarity_scaled, labevents_similarity_scaled, diagnoses_similarity_scaled,
     inputevents_similarity_scaled, labevents_first24h_similarity_scaled, vitalsigns_first24h_similarity_scaled, prescriptions_similarity_scaled
-FROM similarities_20230516144951_scaled
+FROM similarities_20230517102646_scaled
 ORDER BY hadm_id_a, hadm_id_b DESC;
 """
 
@@ -347,3 +349,8 @@ FROM mimiciv_hosp.d_labitems
 WHERE itemid = %s;
 """
 
+inputevent_labels = """
+SELECT DISTINCT itemid, label
+FROM mimiciv_hosp.d_items
+WHERE itemid IN ( %s );
+"""

@@ -2,8 +2,6 @@ import sys
 
 import pytest
 
-print(sys.path)
-
 from simpa.src.schemas import LabEvent
 from simpa.src.labevents import LabEventComparator
 

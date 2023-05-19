@@ -170,6 +170,7 @@ class PostgresDB:
             amount,
             amountuom,
             ordercategoryname,
+            label
         ) in db_result:
             result.append(
                 InputEvent(
@@ -180,6 +181,7 @@ class PostgresDB:
                     amount=amount,
                     amountuom=amountuom,
                     ordercategoryname=ordercategoryname,
+                    label=label,
                 )
             )
         return result
@@ -224,7 +226,8 @@ class PostgresDB:
         return mean, std
 
     # Get endpoints
-    def get_endpoints_for_hadm_id(self, hadm_id: int) -> tuple[int, int]:
+    def get_endpoints_for_hadm_ids(self, hadm_ids: list[int]) -> tuple[int, int]:
+        result = []
         (
             los_icu_result,
             los_hospital_result,
@@ -233,13 +236,15 @@ class PostgresDB:
             thirty_day_mortality,
             one_year_mortality,
         ) = (None, None, None, None, None, None)
-        query = sq.endpoints_for_hadm_id
+
+        query = sq.endpoints_for_hadm_ids
         db_result = self.execute_query(  # [(los_icu, los_hospital), ...]
             query,
-            (hadm_id,),
+            (hadm_ids,),
         )
 
         for (
+            hadm_id,
             los_icu,
             los_hospital,
             icu_mortality,
@@ -247,19 +252,22 @@ class PostgresDB:
             thirty_day_mortality,
             one_year_mortality,
         ) in db_result:
-            if los_hospital is not None and los_hospital_result is None:
+            if los_hospital is not None:
                 los_hospital_result = round(float(los_hospital), 1)
             if los_icu is not None:
-                if los_icu_result is None:
-                    los_icu_result = round(float(los_icu), 1)
-        return (
-            los_icu_result,
-            los_hospital_result,
-            icu_mortality,
-            hosp_mortality,
-            thirty_day_mortality,
-            one_year_mortality,
-        )
+                los_icu_result = round(float(los_icu), 1)
+            result.append(
+                {
+                    "hadm_id": hadm_id,
+                    "los_icu": los_icu_result,
+                    "los_hospital": los_hospital_result,
+                    "icu_mortality": icu_mortality,
+                    "hospital_mortality": hosp_mortality,
+                    "thirty_day_mortality": thirty_day_mortality,
+                    "one_year_mortality": one_year_mortality,
+                }
+            )
+        return result
 
     def get_labevent_by_id_for_hadm_ids(self, hadm_ids: list[int], item_id: int):
         query = sq.labevent_by_id_for_hadm_ids
@@ -293,3 +301,8 @@ class PostgresDB:
         query = sq.labevent_label
         db_result = self.execute_query(query, (id,))
         return db_result[0][0]
+
+    def def_get_inputevent_labels(self, id: list[int]):
+        query = sq.inputevent_labels
+        db_result = self.execute_query(query, (id,))
+        return db_result

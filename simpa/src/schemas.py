@@ -60,6 +60,7 @@ class InputEvent(CategoricalString):
     amount: Optional[float]
     amountuom: Optional[str]
     ordercategoryname: Optional[str]
+    label: Optional[str]
 
     @validator("amount")
     def round_amount(cls, v):
