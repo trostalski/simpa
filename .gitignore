@@ -27,5 +27,8 @@ temp.py
 test.*
 debug.py
 old.py
-graphs/
 logs
+**/*.pickle
+
+# big sql files
+**/similarities*.sql
