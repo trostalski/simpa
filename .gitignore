@@ -27,9 +27,8 @@ temp.py
 test.*
 debug.py
 old.py
-graphs/
-logs
+**/*.pickle
+.pytest_cache/
 
-# large sql files
-similarities*
-*.pickle
+# big sql files
+**/similarities*.sql
