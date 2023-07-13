@@ -27,7 +27,6 @@ temp.py
 test.*
 debug.py
 old.py
-logs
 **/*.pickle
 .pytest_cache/
 
