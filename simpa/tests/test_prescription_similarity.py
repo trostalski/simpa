@@ -26,3 +26,5 @@ def test_equal_prescription_pair(presc_a):
 def test_equal_prescriptions(presc_a):
     comp = PrescriptionComparator()
     assert comp.compare(prescription_a=[presc_a], prescription_b=[presc_a]) == 1.0
+
+    

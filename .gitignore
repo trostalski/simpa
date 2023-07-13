@@ -29,6 +29,7 @@ debug.py
 old.py
 logs
 **/*.pickle
+.pytest_cache/
 
 # big sql files
 **/similarities*.sql
