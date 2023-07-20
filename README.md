@@ -1,1 +1,1 @@
-# Simpa a generic patient similarity framework for clinical data analysis
+# Simpa a generic patient similarity framework for clinical data analysis.
